@@ -35,58 +35,328 @@ function Counter({ target, suffix = "" }) {
   return <span ref={ref}>{count}{suffix}</span>;
 }
 
-function Navbar() {
-  const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  useEffect(() => {
-    const h = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", h);
-    return () => window.removeEventListener("scroll", h);
-  }, []);
-  const links = ["About", "Events", "Gallery", "Results"];
+// ── Social Media SVG Icons ────────────────────────────────────────────────────
+function InstagramIcon({ size = 20 }) {
   return (
-    <nav style={{
-      position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
-      background: scrolled ? "rgba(255,255,255,0.97)" : "rgba(255,255,255,0.92)",
-      backdropFilter: "blur(16px)",
-      boxShadow: scrolled ? "0 2px 24px rgba(0,0,0,0.08)" : "none",
-      transition: "all 0.4s ease",
-      borderBottom: scrolled ? "1px solid rgba(0,0,0,0.06)" : "1px solid transparent"
-    }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 2rem", display: "flex", alignItems: "center", justifyContent: "space-between", height: 110 }}>
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <div style={{ width: 110, height: 110, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-            <img src="/media/logo2.png" alt="ONE4ONE" style={{ width: "100%", height: "100%", objectFit: "contain", transform: "scale(1.9)", transformOrigin: "center" }}
-              onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = '<span style="color:#C9A84C;font-weight:900;font-size:11px;font-family:serif;">1·4·1</span>'; }} />
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "2.5rem" }} className="desktop-nav">
-          {links.map(l => (
-            <a key={l} href={`#${l.toLowerCase()}`} style={{
-              fontFamily: "'DM Sans', sans-serif", fontSize: "0.9rem", fontWeight: 500,
-              color: "#374151", textDecoration: "none", letterSpacing: "0.01em", transition: "color 0.2s"
-            }}
-              onMouseEnter={e => e.target.style.color = "#C9A84C"}
-              onMouseLeave={e => e.target.style.color = "#374151"}>{l}</a>
-          ))}
-          <a href="#contact" style={{
-            background: "linear-gradient(135deg, #C9A84C, #b8962e)", color: "#fff",
-            padding: "0.6rem 1.5rem", borderRadius: 50, fontFamily: "'DM Sans', sans-serif",
-            fontWeight: 600, fontSize: "0.88rem", textDecoration: "none",
-            boxShadow: "0 4px 16px rgba(201,168,76,0.35)", transition: "transform 0.2s, box-shadow 0.2s"
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+      <circle cx="12" cy="12" r="4"/>
+      <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none"/>
+    </svg>
+  );
+}
+
+function FacebookIcon({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+    </svg>
+  );
+}
+
+function TwitterIcon({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+    </svg>
+  );
+}
+
+function LinkedInIcon({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+      <rect x="2" y="9" width="4" height="12"/>
+      <circle cx="4" cy="4" r="2"/>
+    </svg>
+  );
+}
+
+// ── Image Modal ───────────────────────────────────────────────────────────────
+function ImageModal({ src, alt, onClose }) {
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handleKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        background: "rgba(0,0,0,0.92)", backdropFilter: "blur(12px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "2rem", animation: "fadeInModal 0.2s ease"
+      }}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: "relative", maxWidth: "90vw", maxHeight: "90vh",
+          borderRadius: 16, overflow: "hidden",
+          boxShadow: "0 40px 120px rgba(0,0,0,0.8)",
+          animation: "scaleInModal 0.25s cubic-bezier(0.16,1,0.3,1)"
+        }}>
+        <img
+          src={src}
+          alt={alt}
+          style={{ maxWidth: "90vw", maxHeight: "85vh", objectFit: "contain", display: "block" }}
+        />
+        <button
+          onClick={onClose}
+          style={{
+            position: "absolute", top: 12, right: 12,
+            width: 36, height: 36, borderRadius: "50%",
+            background: "rgba(0,0,0,0.6)", border: "1px solid rgba(255,255,255,0.2)",
+            color: "#fff", fontSize: "1.1rem", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            backdropFilter: "blur(8px)", transition: "background 0.2s"
           }}
-            onMouseEnter={e => { e.target.style.transform = "translateY(-2px)"; e.target.style.boxShadow = "0 8px 24px rgba(201,168,76,0.45)"; }}
-            onMouseLeave={e => { e.target.style.transform = "none"; e.target.style.boxShadow = "0 4px 16px rgba(201,168,76,0.35)"; }}>
-            Contact Us
+          onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.8)"}
+          onMouseLeave={e => e.currentTarget.style.background = "rgba(0,0,0,0.6)"}>
+          ✕
+        </button>
+      </div>
+      <div style={{ position: "absolute", bottom: "1.5rem", color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem" }}>
+        Click anywhere outside to close · Esc to close
+      </div>
+    </div>
+  );
+}
+
+// ── Certificate Modal ─────────────────────────────────────────────────────────
+function CertificateModal({ cert, onClose }) {
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handleKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        background: "rgba(0,0,0,0.92)", backdropFilter: "blur(12px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "2rem", animation: "fadeInModal 0.2s ease"
+      }}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: "relative", width: "min(860px, 92vw)", borderRadius: 20, overflow: "hidden",
+          background: "#1a1a1a", boxShadow: "0 40px 120px rgba(0,0,0,0.8)",
+          animation: "scaleInModal 0.25s cubic-bezier(0.16,1,0.3,1)"
+        }}>
+        {/* Header bar */}
+        <div style={{ background: "linear-gradient(135deg,#1a1a2e,#2d3561)", padding: "1rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <span style={{ fontSize: "1.25rem" }}>📜</span>
+            <div>
+              <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.95rem" }}>{cert.name}</div>
+              <div style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.5)", fontSize: "0.75rem" }}>Mt. Kenya Day Dash · January 2026</div>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 36, height: 36, borderRadius: "50%",
+              background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)",
+              color: "#fff", fontSize: "1rem", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "background 0.2s"
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.7)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}>
+            ✕
+          </button>
+        </div>
+
+        {/* PDF Preview */}
+        <div style={{ background: "#2a2a2a", height: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <iframe
+            src={cert.file}
+            title={cert.name}
+            width="100%"
+            height="100%"
+            style={{ border: "none", display: "block" }}
+          />
+        </div>
+
+        {/* Footer with download */}
+        <div style={{ background: "#111", padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+          <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}>
+            Click outside or press Esc to close
+          </p>
+          <a
+            href={cert.file}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "flex", alignItems: "center", gap: "0.5rem",
+              padding: "0.65rem 1.5rem",
+              background: "linear-gradient(135deg,#C9A84C,#b8962e)",
+              color: "#fff", borderRadius: 50,
+              fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: "0.88rem",
+              textDecoration: "none", boxShadow: "0 4px 16px rgba(201,168,76,0.4)",
+              transition: "all 0.2s"
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.04)"; e.currentTarget.style.boxShadow = "0 8px 28px rgba(201,168,76,0.5)"; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(201,168,76,0.4)"; }}>
+            ⬇ Download Certificate
           </a>
         </div>
       </div>
-    </nav>
+    </div>
+  );
+}
+
+// ── Navbar ────────────────────────────────────────────────────────────────────
+function Navbar() {
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 20);
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    handleResize();
+    window.addEventListener("scroll", handleScroll);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  // Close menu when a link is clicked
+  const handleLinkClick = () => setMenuOpen(false);
+
+  const links = ["About", "Events", "Gallery", "Results"];
+
+  return (
+    <>
+      <nav style={{
+        position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
+        background: scrolled || menuOpen ? "rgba(255,255,255,0.97)" : "rgba(255,255,255,0.92)",
+        backdropFilter: "blur(16px)",
+        boxShadow: scrolled ? "0 2px 24px rgba(0,0,0,0.08)" : "none",
+        transition: "all 0.4s ease",
+        borderBottom: scrolled || menuOpen ? "1px solid rgba(0,0,0,0.06)" : "1px solid transparent"
+      }}>
+        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 2rem", display: "flex", alignItems: "center", justifyContent: "space-between", height: 110 }}>
+          {/* Logo */}
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <div style={{ width: 110, height: 110, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+              <img src="/media/logo2.png" alt="ONE4ONE" style={{ width: "100%", height: "100%", objectFit: "contain", transform: "scale(1.9)", transformOrigin: "center" }}
+                onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = '<span style="color:#C9A84C;font-weight:900;font-size:11px;font-family:serif;">1·4·1</span>'; }} />
+            </div>
+          </div>
+
+          {/* Desktop nav */}
+          {!isMobile && (
+            <div style={{ display: "flex", alignItems: "center", gap: "2.5rem" }}>
+              {links.map(l => (
+                <a key={l} href={`#${l.toLowerCase()}`} style={{
+                  fontFamily: "'DM Sans', sans-serif", fontSize: "0.9rem", fontWeight: 500,
+                  color: "#374151", textDecoration: "none", letterSpacing: "0.01em", transition: "color 0.2s"
+                }}
+                  onMouseEnter={e => e.target.style.color = "#C9A84C"}
+                  onMouseLeave={e => e.target.style.color = "#374151"}>{l}</a>
+              ))}
+              <a href="#contact" style={{
+                background: "linear-gradient(135deg, #C9A84C, #b8962e)", color: "#fff",
+                padding: "0.6rem 1.5rem", borderRadius: 50, fontFamily: "'DM Sans', sans-serif",
+                fontWeight: 600, fontSize: "0.88rem", textDecoration: "none",
+                boxShadow: "0 4px 16px rgba(201,168,76,0.35)", transition: "transform 0.2s, box-shadow 0.2s"
+              }}
+                onMouseEnter={e => { e.target.style.transform = "translateY(-2px)"; e.target.style.boxShadow = "0 8px 24px rgba(201,168,76,0.45)"; }}
+                onMouseLeave={e => { e.target.style.transform = "none"; e.target.style.boxShadow = "0 4px 16px rgba(201,168,76,0.35)"; }}>
+                Contact Us
+              </a>
+            </div>
+          )}
+
+          {/* Hamburger button — mobile only */}
+          {isMobile && (
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              aria-label="Toggle menu"
+              style={{
+                display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
+                gap: 5, width: 44, height: 44, background: "transparent", border: "none", cursor: "pointer",
+                padding: "0.5rem", borderRadius: 10, transition: "background 0.2s"
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.1)"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              {/* Three animated bars */}
+              <span style={{
+                display: "block", width: 24, height: 2, background: "#1a1a2e", borderRadius: 2,
+                transition: "all 0.3s ease",
+                transform: menuOpen ? "translateY(7px) rotate(45deg)" : "none"
+              }} />
+              <span style={{
+                display: "block", width: 24, height: 2, background: "#1a1a2e", borderRadius: 2,
+                transition: "all 0.3s ease",
+                opacity: menuOpen ? 0 : 1,
+                transform: menuOpen ? "scaleX(0)" : "none"
+              }} />
+              <span style={{
+                display: "block", width: 24, height: 2, background: "#1a1a2e", borderRadius: 2,
+                transition: "all 0.3s ease",
+                transform: menuOpen ? "translateY(-7px) rotate(-45deg)" : "none"
+              }} />
+            </button>
+          )}
+        </div>
+
+        {/* Mobile dropdown menu */}
+        {isMobile && (
+          <div style={{
+            overflow: "hidden",
+            maxHeight: menuOpen ? 400 : 0,
+            transition: "max-height 0.4s cubic-bezier(0.16,1,0.3,1)",
+            background: "rgba(255,255,255,0.98)",
+            borderTop: menuOpen ? "1px solid rgba(0,0,0,0.06)" : "none"
+          }}>
+            <div style={{ padding: "1rem 2rem 1.5rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+              {links.map(l => (
+                <a key={l} href={`#${l.toLowerCase()}`} onClick={handleLinkClick} style={{
+                  fontFamily: "'DM Sans', sans-serif", fontSize: "1rem", fontWeight: 500,
+                  color: "#374151", textDecoration: "none", padding: "0.75rem 0",
+                  borderBottom: "1px solid rgba(0,0,0,0.05)", transition: "color 0.2s", display: "block"
+                }}
+                  onMouseEnter={e => e.target.style.color = "#C9A84C"}
+                  onMouseLeave={e => e.target.style.color = "#374151"}>{l}</a>
+              ))}
+              <a href="#contact" onClick={handleLinkClick} style={{
+                marginTop: "0.75rem",
+                background: "linear-gradient(135deg, #C9A84C, #b8962e)", color: "#fff",
+                padding: "0.85rem 1.5rem", borderRadius: 50, fontFamily: "'DM Sans', sans-serif",
+                fontWeight: 600, fontSize: "0.95rem", textDecoration: "none", textAlign: "center",
+                boxShadow: "0 4px 16px rgba(201,168,76,0.35)", display: "block"
+              }}>
+                Contact Us
+              </a>
+            </div>
+          </div>
+        )}
+      </nav>
+    </>
   );
 }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
-function Hero() {
+function Hero({ onImageClick }) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { setTimeout(() => setLoaded(true), 100); }, []);
   const stats = [{ value: "2", suffix: "+", label: "Events Organized" }, { value: "100", suffix: "+", label: "Athletes Supported" }, { value: "3", suffix: "", label: "Countries" }];
@@ -126,7 +396,9 @@ function Hero() {
           </div>
         </div>
         <div style={{ opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateX(40px) scale(0.95)", transition: "all 1s cubic-bezier(0.16,1,0.3,1) 0.2s", position: "relative" }}>
-          <div style={{ borderRadius: 24, overflow: "hidden", boxShadow: "0 40px 80px rgba(0,0,0,0.18)", background: "#1a1a2e", aspectRatio: "4/3", position: "relative" }}>
+          <div
+            onClick={() => onImageClick("/media/logo.png", "ONE4ONE Events")}
+            style={{ borderRadius: 24, overflow: "hidden", boxShadow: "0 40px 80px rgba(0,0,0,0.18)", background: "#1a1a2e", aspectRatio: "4/3", position: "relative", cursor: "zoom-in" }}>
             <img src="/media/logo.png" alt="ONE4ONE Events" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.85 }}
               onError={e => {
                 e.target.style.display = "none";
@@ -209,41 +481,39 @@ function WhatWeOrganize() {
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
-function Events() {
+function Events({ onImageClick, onCertClick }) {
   const [ref, visible] = useInView();
   const [photoHovered, setPhotoHovered] = useState(null);
 
-  // ── ONE upcoming event only ──
   const upcomingEvent = {
     title: "Karen, Vienna Loop Marathon",
     date: "28th February 2026",
     location: "Karen, Nairobi",
-    distance: "Full & Half Marathon",
-    participants: "500+ Expected",
+    distance: "Full Marathon",
+    participants: "100+ Expected",
     status: "Registration Open",
     image: "/media/upcoming.png"
   };
 
-  // ── ONE past event with photos and certificates ──
   const pastEvent = {
     title: "Mt. Kenya Day Dash",
     subtitle: "Naromoru Route",
     date: "24th January 2026",
     guides: ["Peter Waihenya", "Elijah Kabugi"],
     photos: [
-      { src: "/media/events/mtkd - 1.png", caption: "Summit Approach" },
-      { src: "/media/events/mtkd - 2.png", caption: "Trail Run" },
-      { src: "/media/events/mtkd - 3.png", caption: "Team Photo" },
-      { src: "/media/events/mtkd - 4.png", caption: "Finish Line" },
-      { src: "/media/events/mtkd - 5.png", caption: "Award Ceremony" },
-      { src: "/media/events/mtkd - 6.png", caption: "Group Hike" },
+      { src: "/media/events/mtkd - 1.png", caption: "Group Hike" },
+      { src: "/media/events/mtkd - 2.png", caption: "Crystal Clear" },
+      { src: "/media/events/mtkd - 3.png", caption: "Summit Approach" },
+      { src: "/media/events/mtkd - 4.png", caption: "Marker Checker" },
+      { src: "/media/events/mtkd - 5.png", caption: "Group Photo" },
+      { src: "/media/events/mtkd - 6.png", caption: "Aerial View" },
     ],
     certificates: [
-      { name: "Certificate 1", file: "/certificates/cert 1.pdf" },
-      { name: "Certificate 2", file: "/certificates/Meek.pdf" },
-      { name: "Certificate 3", file: "/certificates/Timothy.pdf" },
-      { name: "Certificate 4", file: "/certificates/Wambui.pdf" },
-      { name: "Certificate 5", file: "/certificates/Peter.pdf" },
+      { name: "Christopher", file: "/certificates/cert 1.pdf" },
+      { name: "Meek", file: "/certificates/Meek.pdf" },
+      { name: "Timothy", file: "/certificates/Timothy.pdf" },
+      { name: "Wambui", file: "/certificates/Wambui.pdf" },
+      { name: "Peter", file: "/certificates/Peter.pdf" },
     ],
   };
 
@@ -257,7 +527,6 @@ function Events() {
           <p style={{ fontFamily: "'DM Sans', sans-serif", color: "#6b7280", fontSize: "1rem" }}>Join us for our next adventure. Registration now open!</p>
         </div>
 
-        {/* Single centered upcoming event card */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: "5rem" }}>
           <div style={{
             opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(30px)",
@@ -268,7 +537,9 @@ function Events() {
           }}
             onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-8px)"; e.currentTarget.style.boxShadow = "0 24px 64px rgba(0,0,0,0.12)"; }}
             onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 4px 24px rgba(0,0,0,0.06)"; }}>
-            <div style={{ position: "relative", aspectRatio: "16/9", background: "#e5e3dd", overflow: "hidden" }}>
+            <div
+              style={{ position: "relative", aspectRatio: "16/9", background: "#e5e3dd", overflow: "hidden", cursor: "zoom-in" }}
+              onClick={() => onImageClick(upcomingEvent.image, upcomingEvent.title)}>
               <img src={upcomingEvent.image} alt={upcomingEvent.title}
                 style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.4s ease" }}
                 onMouseEnter={ev => ev.target.style.transform = "scale(1.05)"}
@@ -285,7 +556,6 @@ function Events() {
                   <span style={{ fontSize: "0.95rem" }}>{ico}</span> {val}
                 </div>
               ))}
-              {/* Register Now → directs to #contact */}
               <a href="#contact" style={{
                 display: "block", width: "100%", marginTop: "1.25rem", padding: "0.85rem",
                 background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#fff",
@@ -307,14 +577,12 @@ function Events() {
           <p style={{ fontFamily: "'DM Sans', sans-serif", color: "#9ca3af", fontSize: "0.95rem" }}>Our successful events and achievements</p>
         </div>
 
-        {/* Expanded past event card */}
         <div style={{
           background: "#fff", borderRadius: 24, overflow: "hidden",
           boxShadow: "0 4px 32px rgba(0,0,0,0.07)", border: "1px solid rgba(0,0,0,0.05)",
           opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(30px)",
           transition: "all 0.7s ease 0.15s"
         }}>
-
           {/* Event header */}
           <div style={{ padding: "2rem", borderBottom: "1px solid rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
             <div>
@@ -342,9 +610,10 @@ function Events() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "0.85rem" }}>
               {pastEvent.photos.map((photo, i) => (
                 <div key={i}
-                  style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "4/3", background: `hsl(${i * 35 + 190},22%,${32 + i * 4}%)`, cursor: "pointer" }}
+                  style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "4/3", background: `hsl(${i * 35 + 190},22%,${32 + i * 4}%)`, cursor: "zoom-in" }}
                   onMouseEnter={() => setPhotoHovered(i)}
-                  onMouseLeave={() => setPhotoHovered(null)}>
+                  onMouseLeave={() => setPhotoHovered(null)}
+                  onClick={() => onImageClick(photo.src, photo.caption)}>
                   <img src={photo.src} alt={photo.caption}
                     style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.4s ease", transform: photoHovered === i ? "scale(1.08)" : "scale(1)" }}
                     onError={ev => {
@@ -354,6 +623,10 @@ function Events() {
                   <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 55%)", opacity: photoHovered === i ? 1 : 0, transition: "opacity 0.3s" }} />
                   <div style={{ position: "absolute", bottom: 10, left: 12, opacity: photoHovered === i ? 1 : 0, transform: photoHovered === i ? "translateY(0)" : "translateY(6px)", transition: "all 0.3s" }}>
                     <span style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: "0.8rem", color: "#fff" }}>{photo.caption}</span>
+                  </div>
+                  {/* Zoom hint icon */}
+                  <div style={{ position: "absolute", top: 8, right: 8, opacity: photoHovered === i ? 1 : 0, transition: "opacity 0.3s", background: "rgba(0,0,0,0.5)", borderRadius: "50%", width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
+                    <span style={{ fontSize: "0.75rem" }}>🔍</span>
                   </div>
                 </div>
               ))}
@@ -367,17 +640,23 @@ function Events() {
             </h4>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: "1rem" }}>
               {pastEvent.certificates.map((cert, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(248,247,244,0.9)", borderRadius: 14, padding: "1rem 1.25rem", border: "1px solid rgba(201,168,76,0.15)", transition: "all 0.2s" }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.background = "rgba(201,168,76,0.04)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.15)"; e.currentTarget.style.background = "rgba(248,247,244,0.9)"; }}>
+                <div
+                  key={i}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(248,247,244,0.9)", borderRadius: 14, padding: "1rem 1.25rem", border: "1px solid rgba(201,168,76,0.15)", transition: "all 0.2s", cursor: "pointer" }}
+                  onClick={() => onCertClick(cert)}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.background = "rgba(201,168,76,0.04)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(201,168,76,0.1)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.15)"; e.currentTarget.style.background = "rgba(248,247,244,0.9)"; e.currentTarget.style.boxShadow = "none"; }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                     <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(201,168,76,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem", flexShrink: 0 }}>🏅</div>
                     <div>
                       <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, color: "#1a1a2e", fontSize: "0.88rem" }}>{cert.name}</div>
                       <div style={{ fontFamily: "'DM Sans', sans-serif", color: "#9ca3af", fontSize: "0.74rem", marginTop: 2 }}>Mt. Kenya Day Dash · Jan 2026</div>
+                      <div style={{ fontFamily: "'DM Sans', sans-serif", color: "#C9A84C", fontSize: "0.72rem", marginTop: 2, fontWeight: 600 }}>Click to preview</div>
                     </div>
                   </div>
-                  <a href={cert.file} download target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: "0.3rem", padding: "0.4rem 0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#fff", borderRadius: 50, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: "0.75rem", textDecoration: "none", boxShadow: "0 2px 8px rgba(201,168,76,0.3)", transition: "all 0.2s", whiteSpace: "nowrap" }}
+                  <a href={cert.file} download target="_blank" rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    style={{ display: "flex", alignItems: "center", gap: "0.3rem", padding: "0.4rem 0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#fff", borderRadius: 50, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: "0.75rem", textDecoration: "none", boxShadow: "0 2px 8px rgba(201,168,76,0.3)", transition: "all 0.2s", whiteSpace: "nowrap" }}
                     onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.boxShadow = "0 4px 14px rgba(201,168,76,0.45)"; }}
                     onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(201,168,76,0.3)"; }}>
                     ⬇ Download
@@ -386,7 +665,6 @@ function Events() {
               ))}
             </div>
           </div>
-
         </div>
       </div>
     </section>
@@ -394,30 +672,39 @@ function Events() {
 }
 
 // ── Gallery ───────────────────────────────────────────────────────────────────
-function Gallery() {
+function Gallery({ onImageClick }) {
   const [ref, visible] = useInView();
   const [hovered, setHovered] = useState(null);
   const items = [
-    { src: "/gallery-1.jpg", label: "Hiking", title: "Mt. Kenya Summit" },
-    { src: "/gallery-2.jpg", label: "Running", title: "Marathon Runners" },
-    { src: "/gallery-3.jpg", label: "Hiking", title: "Sunset Trail" },
-    { src: "/gallery-4.jpg", label: "Running", title: "Training Session" },
-    { src: "/gallery-5.jpg", label: "Tours", title: "City Exploration" },
-    { src: "/gallery-6.jpg", label: "Running", title: "Race Day" },
+    { src: "/gallery/gallery 1.png", label: "Running", title: "Vienna Loop" },
+    { src: "/gallery/gallery 2.png", label: "Running", title: "Vienna Loop" },
+    { src: "/gallery/gallery 3.png", label: "Running", title: "Vienna Loop" },
+    { src: "/gallery/gallery 4.png", label: "Hiking", title: "Mt. Kenya Day Dash" },
+    { src: "/gallery/gallery 5.png", label: "Hiking", title: "Mt. Kenya Day Dash" },
+    { src: "/gallery/gallery 6.png", label: "Hiking", title: "Mt. Kenya Day Dash" },
   ];
   const fallbackEmoji = ["⛰️", "🏃", "🌅", "🏋️", "🗺️", "🏁"];
+
+  const socialLinks = [
+    { icon: <InstagramIcon size={18} />, name: "Instagram", url: "https://www.instagram.com/one4one_placeholder" },
+    { icon: <FacebookIcon size={18} />, name: "Facebook", url: "https://www.facebook.com/one4one_placeholder" },
+    { icon: <TwitterIcon size={18} />, name: "Twitter", url: "https://www.twitter.com/one4one_placeholder" },
+  ];
+
   return (
     <section id="gallery" ref={ref} style={{ padding: "7rem 2rem", background: "#fff" }}>
       <div style={{ maxWidth: 1280, margin: "0 auto" }}>
         <div style={{ textAlign: "center", marginBottom: "3.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(24px)", transition: "all 0.7s ease" }}>
           <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 800, color: "#1a1a2e", marginBottom: "0.75rem" }}>Event Gallery</h2>
-          <p style={{ fontFamily: "'DM Sans', sans-serif", color: "#6b7280", fontSize: "1rem" }}>Memories from our amazing events and adventures</p>
+          <p style={{ fontFamily: "'DM Sans', sans-serif", color: "#6b7280", fontSize: "1rem" }}>From our amazing past and upcoming events and adventures</p>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
           {items.map((item, i) => (
-            <div key={i} style={{ position: "relative", borderRadius: 20, overflow: "hidden", aspectRatio: "4/3", background: "#e5e3dd", cursor: "pointer", opacity: visible ? 1 : 0, transform: visible ? "none" : "scale(0.95)", transition: `all 0.6s ease ${i * 0.08}s` }}
+            <div key={i}
+              style={{ position: "relative", borderRadius: 20, overflow: "hidden", aspectRatio: "4/3", background: "#e5e3dd", cursor: "zoom-in", opacity: visible ? 1 : 0, transform: visible ? "none" : "scale(0.95)", transition: `all 0.6s ease ${i * 0.08}s` }}
               onMouseEnter={() => setHovered(i)}
-              onMouseLeave={() => setHovered(null)}>
+              onMouseLeave={() => setHovered(null)}
+              onClick={() => onImageClick(item.src, item.title)}>
               <img src={item.src} alt={item.title} style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.5s ease", transform: hovered === i ? "scale(1.08)" : "scale(1)" }}
                 onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i * 40 + 200},25%,${30 + i * 5}%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:3rem">${fallbackEmoji[i]}</div>`; }} />
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 60%)", opacity: hovered === i ? 1 : 0, transition: "opacity 0.3s" }} />
@@ -425,18 +712,27 @@ function Gallery() {
                 <span style={{ background: "rgba(201,168,76,0.9)", color: "#fff", padding: "0.2rem 0.65rem", borderRadius: 50, fontSize: "0.72rem", fontWeight: 600, fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: "0.3rem", width: "fit-content" }}>{item.label}</span>
                 <span style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: "0.9rem", color: "#fff" }}>{item.title}</span>
               </div>
+              {/* Zoom icon */}
+              <div style={{ position: "absolute", top: 12, right: 12, opacity: hovered === i ? 1 : 0, transition: "opacity 0.3s", background: "rgba(0,0,0,0.5)", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
+                <span style={{ fontSize: "0.85rem" }}>🔍</span>
+              </div>
             </div>
           ))}
         </div>
         <div style={{ textAlign: "center", marginTop: "2.5rem", opacity: visible ? 1 : 0, transition: "all 0.7s ease 0.5s" }}>
           <p style={{ fontFamily: "'DM Sans', sans-serif", color: "#9ca3af", fontSize: "0.9rem", marginBottom: "1rem" }}>Want to see more photos from our events? Follow us on social media!</p>
           <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
-            {[["📷", "Instagram"], ["🔵", "Facebook"], ["🐦", "Twitter"]].map(([ico, name]) => (
-              <button key={name} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 1.25rem", borderRadius: 50, border: "1.5px solid rgba(0,0,0,0.1)", background: "rgba(249,248,246,0.9)", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: "0.83rem", color: "#374151", cursor: "pointer", transition: "all 0.2s" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "#C9A84C"; e.currentTarget.style.color = "#b8962e"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.1)"; e.currentTarget.style.color = "#374151"; }}>
-                <span>{ico}</span> {name}
-              </button>
+            {socialLinks.map(({ icon, name, url }) => (
+              <a
+                key={name}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 1.25rem", borderRadius: 50, border: "1.5px solid rgba(0,0,0,0.1)", background: "rgba(249,248,246,0.9)", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: "0.83rem", color: "#374151", cursor: "pointer", transition: "all 0.2s", textDecoration: "none" }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "#C9A84C"; e.currentTarget.style.color = "#b8962e"; e.currentTarget.style.background = "rgba(201,168,76,0.06)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.1)"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.background = "rgba(249,248,246,0.9)"; }}>
+                {icon} {name}
+              </a>
             ))}
           </div>
         </div>
@@ -524,6 +820,14 @@ function Contact() {
   const [sent, setSent] = useState(false);
   const handle = e => setForm({ ...form, [e.target.name]: e.target.value });
   const submit = () => { if (form.name && form.email) { setSent(true); setTimeout(() => setSent(false), 3000); setForm({ name: "", email: "", subject: "", message: "" }); } };
+
+  const socialLinks = [
+    { icon: <InstagramIcon size={18} />, url: "https://www.instagram.com/one4one_placeholder" },
+    { icon: <FacebookIcon size={18} />, url: "https://www.facebook.com/one4one_placeholder" },
+    { icon: <TwitterIcon size={18} />, url: "https://www.twitter.com/one4one_placeholder" },
+    { icon: <LinkedInIcon size={18} />, url: "https://www.linkedin.com/company/one4one_placeholder" },
+  ];
+
   return (
     <section id="contact" ref={ref} style={{ padding: "7rem 2rem", background: "#fff" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "5rem", alignItems: "start", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(24px)", transition: "all 0.7s ease" }}>
@@ -531,8 +835,8 @@ function Contact() {
           <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 800, color: "#1a1a2e", marginBottom: "1rem" }}>Get In Touch</h2>
           <p style={{ fontFamily: "'DM Sans', sans-serif", color: "#6b7280", lineHeight: 1.7, marginBottom: "2.5rem" }}>Have questions about our events? Want to become a sponsor or partner? We'd love to hear from you!</p>
           {[
-            { icon: "✉️", label: "Email", lines: ["info@one4one.co", "events@one4one.co"] },
-            { icon: "📞", label: "Phone", lines: ["+254 XXX XXX XXX"] },
+            { icon: "✉️", label: "Email", lines: ["info@one4one.co", ""] },
+            { icon: "📞", label: "Phone", lines: ["+254 722 943 271"] },
             { icon: "📍", label: "Location", lines: ["Nairobi, Kenya"] },
           ].map((c, i) => (
             <div key={i} style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem" }}>
@@ -546,12 +850,13 @@ function Contact() {
           <div style={{ marginTop: "2rem", paddingTop: "1.5rem", borderTop: "1px solid rgba(0,0,0,0.07)" }}>
             <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "#9ca3af", marginBottom: "0.75rem" }}>Follow us on social media:</p>
             <div style={{ display: "flex", gap: "0.6rem" }}>
-              {["📷", "🔵", "🐦", "💼"].map((ico, i) => (
-                <button key={i} style={{ width: 40, height: 40, borderRadius: 12, border: "1.5px solid rgba(0,0,0,0.1)", background: "#f9f8f6", fontSize: "1.1rem", cursor: "pointer", transition: "all 0.2s" }}
-                  onMouseEnter={e => { e.target.style.borderColor = "#C9A84C"; e.target.style.background = "rgba(201,168,76,0.08)"; }}
-                  onMouseLeave={e => { e.target.style.borderColor = "rgba(0,0,0,0.1)"; e.target.style.background = "#f9f8f6"; }}>
-                  {ico}
-                </button>
+              {socialLinks.map((s, i) => (
+                <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
+                  style={{ width: 40, height: 40, borderRadius: 12, border: "1.5px solid rgba(0,0,0,0.1)", background: "#f9f8f6", display: "flex", alignItems: "center", justifyContent: "center", color: "#374151", cursor: "pointer", transition: "all 0.2s", textDecoration: "none" }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#C9A84C"; e.currentTarget.style.background = "rgba(201,168,76,0.08)"; e.currentTarget.style.color = "#b8962e"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.1)"; e.currentTarget.style.background = "#f9f8f6"; e.currentTarget.style.color = "#374151"; }}>
+                  {s.icon}
+                </a>
               ))}
             </div>
           </div>
@@ -587,6 +892,13 @@ function Contact() {
 
 // ── Footer ────────────────────────────────────────────────────────────────────
 function Footer() {
+  const socialLinks = [
+    { icon: <InstagramIcon size={16} />, url: "https://www.instagram.com/one4one_placeholder", label: "Instagram" },
+    { icon: <FacebookIcon size={16} />, url: "https://www.facebook.com/one4one_placeholder", label: "Facebook" },
+    { icon: <TwitterIcon size={16} />, url: "https://www.twitter.com/one4one_placeholder", label: "Twitter" },
+    { icon: <LinkedInIcon size={16} />, url: "https://www.linkedin.com/company/one4one_placeholder", label: "LinkedIn" },
+  ];
+
   return (
     <footer style={{ background: "#111827", color: "#fff", padding: "4rem 2rem 2rem" }}>
       <div style={{ maxWidth: 1280, margin: "0 auto" }}>
@@ -599,12 +911,23 @@ function Footer() {
               </div>
               <span style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: "1rem", color: "#fff" }}>ONE4ONE</span>
             </div>
-            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.45)", fontSize: "0.85rem", lineHeight: 1.7, maxWidth: 240 }}>Organizing running, hiking, and tour events across Africa and beyond.</p>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.45)", fontSize: "0.85rem", lineHeight: 1.7, maxWidth: 240, marginBottom: "1rem" }}>Organizing running, hiking, and tour events across Africa and beyond.</p>
+            {/* Social icons in footer */}
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              {socialLinks.map((s, i) => (
+                <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" aria-label={s.label}
+                  style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.5)", cursor: "pointer", transition: "all 0.2s", textDecoration: "none" }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.5)"; e.currentTarget.style.background = "rgba(201,168,76,0.12)"; e.currentTarget.style.color = "#C9A84C"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "rgba(255,255,255,0.5)"; }}>
+                  {s.icon}
+                </a>
+              ))}
+            </div>
           </div>
           {[
             { title: "Quick Links", links: ["About Us", "Events", "Gallery", "Results"] },
             { title: "Events", links: ["Upcoming Events", "Past Events", "Register", "Download Certificate"] },
-            { title: "Contact", links: ["info@one4one.co", "events@one4one.co", "+254 XXX XXX XXX", "Nairobi, Kenya"] },
+            { title: "Contact", links: ["info@one4one.co", "+254 722 943 271", "Nairobi, Kenya"] },
           ].map((col, i) => (
             <div key={i}>
               <h4 style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: "0.88rem", color: "#fff", marginBottom: "1.25rem", letterSpacing: "0.05em", textTransform: "uppercase" }}>{col.title}</h4>
@@ -633,6 +956,14 @@ function Footer() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function HomePage() {
+  const [imageModal, setImageModal] = useState(null); // { src, alt }
+  const [certModal, setCertModal] = useState(null);   // cert object
+
+  const openImage = (src, alt) => setImageModal({ src, alt });
+  const closeImage = () => setImageModal(null);
+  const openCert = (cert) => setCertModal(cert);
+  const closeCert = () => setCertModal(null);
+
   return (
     <>
       <style>{`
@@ -644,8 +975,16 @@ export default function HomePage() {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-8px); }
         }
+        @keyframes fadeInModal {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scaleInModal {
+          from { opacity: 0; transform: scale(0.92); }
+          to { opacity: 1; transform: scale(1); }
+        }
         @media (max-width: 768px) {
-          .desktop-nav { display: none !important; }
+          /* hamburger handled in JS */
         }
         @media (max-width: 900px) {
           .hero-grid { grid-template-columns: 1fr !important; }
@@ -655,14 +994,31 @@ export default function HomePage() {
         }
       `}</style>
       <Navbar />
-      <Hero />
+      <Hero onImageClick={openImage} />
       <About />
       <WhatWeOrganize />
-      <Events />
-      <Gallery />
+      <Events onImageClick={openImage} onCertClick={openCert} />
+      <Gallery onImageClick={openImage} />
       <Results />
       <Contact />
       <Footer />
+
+      {/* Image Modal */}
+      {imageModal && (
+        <ImageModal
+          src={imageModal.src}
+          alt={imageModal.alt}
+          onClose={closeImage}
+        />
+      )}
+
+      {/* Certificate Modal */}
+      {certModal && (
+        <CertificateModal
+          cert={certModal}
+          onClose={closeCert}
+        />
+      )}
     </>
   );
 }
