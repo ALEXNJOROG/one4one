@@ -11,4 +11,4 @@ services:
     #     - /app/node_modules
     #     - /app/.next
     ports:
-      - "80:80"
+      - "3004:3004"
