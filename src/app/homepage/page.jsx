@@ -231,19 +231,19 @@ function Events() {
     date: "24th January 2026",
     guides: ["Peter Waihenya", "Elijah Kabugi"],
     photos: [
-      { src: "/media/events/mtkd-1.jpg", caption: "Summit Approach" },
-      { src: "/media/events/mtkd-2.jpg", caption: "Trail Run" },
-      { src: "/media/events/mtkd-3.jpg", caption: "Team Photo" },
-      { src: "/media/events/mtkd-4.jpg", caption: "Finish Line" },
-      { src: "/media/events/mtkd-5.jpg", caption: "Award Ceremony" },
-      { src: "/media/events/mtkd-6.jpg", caption: "Group Hike" },
+      { src: "/media/events/mtkd - 1.png", caption: "Summit Approach" },
+      { src: "/media/events/mtkd - 2.png", caption: "Trail Run" },
+      { src: "/media/events/mtkd - 3.png", caption: "Team Photo" },
+      { src: "/media/events/mtkd - 4.png", caption: "Finish Line" },
+      { src: "/media/events/mtkd - 5.png", caption: "Award Ceremony" },
+      { src: "/media/events/mtkd - 6.png", caption: "Group Hike" },
     ],
     certificates: [
-      { name: "Certificate 1", file: "/media/certificates/certificate-1.pdf" },
-      { name: "Certificate 2", file: "/media/certificates/certificate-2.pdf" },
-      { name: "Certificate 3", file: "/media/certificates/certificate-3.pdf" },
-      { name: "Certificate 4", file: "/media/certificates/certificate-4.pdf" },
-      { name: "Certificate 5", file: "/media/certificates/certificate-5.pdf" },
+      { name: "Certificate 1", file: "/certificates/cert 1.pdf" },
+      { name: "Certificate 2", file: "/certificates/Meek.pdf" },
+      { name: "Certificate 3", file: "/certificates/Timothy.pdf" },
+      { name: "Certificate 4", file: "/certificates/Wambui.pdf" },
+      { name: "Certificate 5", file: "/certificates/Peter.pdf" },
     ],
   };
 
@@ -593,8 +593,8 @@ function Footer() {
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: "3rem", marginBottom: "3rem" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
-              <div style={{ width: 44, height: 44, borderRadius: 10, background: "rgba(201,168,76,0.15)", border: "1px solid rgba(201,168,76,0.3)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                <img src="/logo.png" alt="ONE4ONE" style={{ width: "100%", height: "100%", objectFit: "contain" }}
+              <div style={{ width: 44, height: 44, borderRadius: 10, background: "rgba(187, 174, 137, 0.15)", border: "1px solid rgba(201,168,76,0.3)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                <img src="/media/logo.png" alt="ONE4ONE" style={{ width: "100%", height: "100%", objectFit: "contain" }}
                   onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = '<span style="color:#C9A84C;font-weight:900;font-size:10px;font-family:serif">1·4·1</span>'; }} />
               </div>
               <span style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: "1rem", color: "#fff" }}>ONE4ONE</span>
