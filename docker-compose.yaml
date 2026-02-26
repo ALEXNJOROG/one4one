@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  one4one:
+    image: one4one
+    build:
+      context: ./
+      # target: dev
+      dockerfile: Dockerfile
+    # volumes:
+    #     - .:/app
+    #     - /app/node_modules
+    #     - /app/.next
+    ports:
+      - "80:80"
