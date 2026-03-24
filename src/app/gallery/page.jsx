@@ -1,5 +1,8 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+
+// ── Config ────────────────────────────────────────────────────────────────────
+const BASE_URL = "http://75.119.159.17:9002";
 
 // ── Global CSS ────────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
@@ -41,13 +44,20 @@ const GLOBAL_CSS = `
     from { opacity: 0; transform: translateY(-100%); }
     to { opacity: 1; transform: translateY(0); }
   }
-  @keyframes lineExpand {
-    from { width: 0; }
-    to { width: 100%; }
-  }
   @keyframes heroKenBurns {
     0% { transform: scale(1.05); }
     100% { transform: scale(1.14); }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  @keyframes skeletonShimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
   }
 
   .gold-shimmer {
@@ -81,6 +91,13 @@ const GLOBAL_CSS = `
 
   .filter-btn { transition: all 0.25s; }
 
+  .skeleton {
+    background: linear-gradient(90deg, #1a1a2e 25%, #22223a 50%, #1a1a2e 75%);
+    background-size: 400px 100%;
+    animation: skeletonShimmer 1.4s ease infinite;
+    border-radius: 10px;
+  }
+
   @media (max-width: 768px) {
     .desktop-nav { display: none !important; }
     .mobile-menu-btn { display: flex !important; }
@@ -90,6 +107,67 @@ const GLOBAL_CSS = `
     .mobile-nav-drawer { display: none !important; }
   }
 `;
+
+// ── API Layer ─────────────────────────────────────────────────────────────────
+const api = {
+  async getEvents(page = 1, limit = 50) {
+    const res = await fetch(`${BASE_URL}/api/events?page=${page}&limit=${limit}`);
+    if (!res.ok) throw new Error(`Events fetch failed: ${res.status}`);
+    const json = await res.json();
+    if (json.status !== "success") throw new Error(json.message || "Failed to load events");
+    return json.data; // { events: [], pagination: {} }
+  },
+
+  async getEventMedia(eventId, fileType = null, page = 1, limit = 100) {
+    let url = `${BASE_URL}/api/events/${eventId}/media?page=${page}&limit=${limit}`;
+    if (fileType) url += `&file_type=${fileType}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Media fetch failed: ${res.status}`);
+    const json = await res.json();
+    if (json.status !== "success") throw new Error(json.message || "Failed to load media");
+    return json.data; // { media_files: [], pagination: {} }
+  },
+
+  async getEventMediaStats(eventId) {
+    const res = await fetch(`${BASE_URL}/api/events/${eventId}/media/stats`);
+    if (!res.ok) throw new Error(`Stats fetch failed: ${res.status}`);
+    const json = await res.json();
+    if (json.status !== "success") throw new Error(json.message || "Failed to load stats");
+    return json.data; // { total_files, total_photos, total_videos, total_size_mb }
+  },
+
+  async uploadMedia(eventId, file, fileType) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("file_type", fileType);
+    const res = await fetch(`${BASE_URL}/api/events/${eventId}/media/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    const json = await res.json();
+    if (json.status !== "success") throw new Error(json.message || "Upload failed");
+    return json.data;
+  },
+
+  async deleteMedia(mediaId) {
+    const res = await fetch(`${BASE_URL}/api/media/${mediaId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+    return res.json();
+  },
+
+  async createEvent(payload) {
+    const res = await fetch(`${BASE_URL}/api/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`Create event failed: ${res.status}`);
+    const json = await res.json();
+    if (json.status !== "success") throw new Error(json.message || "Create failed");
+    return json.data;
+  },
+};
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 function useInView(threshold = 0.1) {
@@ -105,6 +183,29 @@ function useInView(threshold = 0.1) {
   return [ref, visible];
 }
 
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return "";
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
+}
+
+// Derive label from event title (fallback heuristic)
+function guessLabel(event) {
+  const t = (event.title || "").toLowerCase();
+  if (t.includes("run") || t.includes("loop") || t.includes("marathon") || t.includes("5k") || t.includes("10k")) return "Running";
+  if (t.includes("hik") || t.includes("trek") || t.includes("mountain") || t.includes("kenya") || t.includes("dash")) return "Hiking";
+  if (t.includes("tour") || t.includes("trip") || t.includes("travel")) return "Tour";
+  return "Event";
+}
+
+const FALLBACK_EMOJIS = ["🏃", "🌅", "⛰️", "🥾", "📸", "🏁", "👥", "💧", "🧗", "🗺️", "🏅", "🤝"];
+
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const ArrowLeft = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -119,6 +220,21 @@ const ChevronLeft = () => (
 const ChevronRight = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 18l6-6-6-6"/>
+  </svg>
+);
+const UploadIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+  </svg>
+);
+const RefreshIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+  </svg>
+);
+const TrashIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
   </svg>
 );
 const InstagramIcon = ({ size = 16 }) => (
@@ -139,33 +255,165 @@ const TwitterIcon = ({ size = 16 }) => (
   </svg>
 );
 
-// ── All gallery media ─────────────────────────────────────────────────────────
-const ALL_MEDIA = [
-  // Running — Vienna Loop
-  { id: 1, src: "/gallery/gallery 1.png",          label: "Running", event: "Vienna Loop",          date: "Feb 2026", featured: true },
-  { id: 2, src: "/gallery/gallery 2.png",          label: "Running", event: "Vienna Loop",          date: "Feb 2026", featured: false },
-  { id: 3, src: "/gallery/gallery 3.png",          label: "Running", event: "Vienna Loop",          date: "Feb 2026", featured: false },
-  // Hiking — Mt. Kenya Day Dash
-  { id: 4, src: "/gallery/gallery 4.png",          label: "Hiking",  event: "Mt. Kenya Day Dash",   date: "Jan 2026", featured: true },
-  { id: 5, src: "/gallery/gallery 5.png",          label: "Hiking",  event: "Mt. Kenya Day Dash",   date: "Jan 2026", featured: false },
-  { id: 6, src: "/gallery/gallery 6.png",          label: "Hiking",  event: "Mt. Kenya Day Dash",   date: "Jan 2026", featured: false },
-  // Event photos
-  { id: 7,  src: "/media/events/mtkd - 1.png",    label: "Hiking",  event: "Mt. Kenya Day Dash",   date: "Jan 2026", caption: "Group Hike",       featured: true },
-  { id: 8,  src: "/media/events/mtkd - 2.png",    label: "Hiking",  event: "Mt. Kenya Day Dash",   date: "Jan 2026", caption: "Crystal Clear",    featured: false },
-  { id: 9,  src: "/media/events/mtkd - 3.png",    label: "Hiking",  event: "Mt. Kenya Day Dash",   date: "Jan 2026", caption: "Summit Approach",  featured: true },
-  { id: 10, src: "/media/events/mtkd - 4.png",    label: "Hiking",  event: "Mt. Kenya Day Dash",   date: "Jan 2026", caption: "Marker Check",     featured: false },
-  { id: 11, src: "/media/events/mtkd - 5.png",    label: "Hiking",  event: "Mt. Kenya Day Dash",   date: "Jan 2026", caption: "Group Photo",      featured: true },
-  { id: 12, src: "/media/events/mtkd - 6.png",    label: "Hiking",  event: "Mt. Kenya Day Dash",   date: "Jan 2026", caption: "Aerial View",      featured: false },
-];
+// ── Spinner ───────────────────────────────────────────────────────────────────
+function Spinner({ size = 24, color = "#C9A84C" }) {
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", border: `2px solid rgba(201,168,76,0.15)`, borderTopColor: color, animation: "spin 0.75s linear infinite", display: "inline-block", flexShrink: 0 }} />
+  );
+}
 
-const FALLBACK = ["🏃", "🌅", "⛰️", "🥾", "📸", "🏁", "👥", "💧", "🧗", "🗺️", "🏅", "🤝"];
+// ── Skeleton Cards ────────────────────────────────────────────────────────────
+function SkeletonGrid({ count = 8 }) {
+  return (
+    <div style={{ columns: "3 280px", gap: "1rem" }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="skeleton" style={{ height: [220, 280, 200, 260, 300, 240, 180, 250][i % 8], marginBottom: "1rem", breakInside: "avoid" }} />
+      ))}
+    </div>
+  );
+}
 
-const FILTERS = ["All", "Running", "Hiking"];
-const EVENTS  = ["All Events", "Vienna Loop", "Mt. Kenya Day Dash"];
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function Toast({ message, type = "success", onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 3500);
+    return () => clearTimeout(t);
+  }, [onClose]);
+  const bg = type === "error" ? "#7f1d1d" : type === "success" ? "rgba(201,168,76,0.15)" : "#1e293b";
+  const border = type === "error" ? "#dc2626" : "#C9A84C";
+  return (
+    <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 3000, background: bg, border: `1px solid ${border}`, borderRadius: 8, padding: "0.9rem 1.25rem", maxWidth: 360, display: "flex", alignItems: "center", gap: "0.75rem", animation: "fadeUp 0.3s ease", boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+      <span style={{ fontSize: "1rem" }}>{type === "error" ? "⚠️" : "✓"}</span>
+      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "#fff", flex: 1 }}>{message}</span>
+      <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: "1rem", lineHeight: 1, padding: 0 }}>✕</button>
+    </div>
+  );
+}
+
+// ── Upload Modal ──────────────────────────────────────────────────────────────
+function UploadModal({ events, onClose, onUploaded, showToast }) {
+  const [selectedEventId, setSelectedEventId] = useState(events[0]?.id || "");
+  const [fileType, setFileType] = useState("photo");
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef();
+
+  const handleFile = (f) => {
+    if (!f) return;
+    setFile(f);
+    const url = URL.createObjectURL(f);
+    setPreview(url);
+    if (f.type.startsWith("video/")) setFileType("video");
+    else setFileType("photo");
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault(); setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  };
+
+  const handleSubmit = async () => {
+    if (!file || !selectedEventId) return;
+    setUploading(true);
+    try {
+      const result = await api.uploadMedia(selectedEventId, file, fileType);
+      showToast("Media uploaded successfully!", "success");
+      onUploaded(selectedEventId, result);
+      onClose();
+    } catch (err) {
+      showToast(err.message || "Upload failed", "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, padding: "2rem", width: "100%", maxWidth: 520, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>
+          <div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.3rem" }}>Media Manager</div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.6rem", fontWeight: 700, color: "#fff" }}>Upload Media</h3>
+          </div>
+          <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+        </div>
+
+        {/* Event selector */}
+        <div style={{ marginBottom: "1rem" }}>
+          <label style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.12em", textTransform: "uppercase", display: "block", marginBottom: "0.5rem" }}>Select Event</label>
+          <select value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)} style={{ width: "100%", padding: "0.65rem 0.9rem", background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#fff", fontFamily: "'DM Sans', sans-serif", fontSize: "0.88rem", cursor: "pointer", outline: "none" }}>
+            {events.map(ev => (
+              <option key={ev.id} value={ev.id}>{ev.title}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* File type */}
+        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+          {["photo", "video"].map(t => (
+            <button key={t} onClick={() => setFileType(t)} style={{ flex: 1, padding: "0.55rem", borderRadius: 6, border: "1px solid", borderColor: fileType === t ? "#C9A84C" : "rgba(255,255,255,0.1)", background: fileType === t ? "rgba(201,168,76,0.1)" : "transparent", color: fileType === t ? "#C9A84C" : "rgba(255,255,255,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s" }}>
+              {t === "photo" ? "📷 Photo" : "🎬 Video"}
+            </button>
+          ))}
+        </div>
+
+        {/* Drop zone */}
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={() => fileRef.current?.click()}
+          style={{ border: `2px dashed ${dragOver ? "#C9A84C" : "rgba(201,168,76,0.25)"}`, borderRadius: 10, padding: "1.5rem", textAlign: "center", cursor: "pointer", background: dragOver ? "rgba(201,168,76,0.05)" : "rgba(255,255,255,0.02)", transition: "all 0.2s", marginBottom: "1.25rem", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+          <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+          {preview ? (
+            fileType === "photo"
+              ? <img src={preview} alt="preview" style={{ maxHeight: 120, maxWidth: "100%", borderRadius: 6, objectFit: "contain" }} />
+              : <video src={preview} style={{ maxHeight: 100, maxWidth: "100%", borderRadius: 6 }} controls />
+          ) : (
+            <>
+              <div style={{ fontSize: "2rem", opacity: 0.5 }}>{fileType === "photo" ? "🖼️" : "🎞️"}</div>
+              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "rgba(255,255,255,0.45)" }}>
+                Drop {fileType} here or <span style={{ color: "#C9A84C", fontWeight: 600 }}>browse</span>
+              </div>
+              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.2)" }}>
+                {fileType === "photo" ? "JPG, PNG, WEBP" : "MP4, MOV, AVI"} supported
+              </div>
+            </>
+          )}
+        </div>
+
+        {file && (
+          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.35)", marginBottom: "1rem" }}>
+            {file.name} · {formatFileSize(file.size)}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Cancel
+          </button>
+          <button onClick={handleSubmit} disabled={!file || !selectedEventId || uploading} style={{ flex: 2, padding: "0.75rem", borderRadius: 6, background: file && selectedEventId && !uploading ? "linear-gradient(135deg,#C9A84C,#b8962e)" : "rgba(201,168,76,0.2)", color: file && selectedEventId && !uploading ? "#0d0d1a" : "rgba(201,168,76,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: file && selectedEventId && !uploading ? "pointer" : "not-allowed", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+            {uploading ? <><Spinner size={16} color="#C9A84C" /> Uploading...</> : <><UploadIcon /> Upload Media</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
-function Lightbox({ items, startIndex, onClose }) {
+function Lightbox({ items, startIndex, onClose, onDelete, canDelete }) {
   const [current, setCurrent] = useState(startIndex);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const handle = (e) => {
@@ -179,65 +427,79 @@ function Lightbox({ items, startIndex, onClose }) {
   }, [onClose, items.length]);
 
   const item = items[current];
+  const isVideo = item?.file_type === "video" || (item?.storage_path || "").match(/\.(mp4|mov|avi|webm)$/i);
+
+  const handleDelete = async () => {
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    setDeleting(true);
+    await onDelete(item.id, current);
+    setDeleting(false);
+    setConfirmDelete(false);
+    if (items.length <= 1) { onClose(); return; }
+    setCurrent(c => Math.min(c, items.length - 2));
+  };
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.97)", backdropFilter: "blur(24px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease" }}>
-
       {/* Close */}
-      <button onClick={onClose} style={{ position: "absolute", top: 20, right: 20, width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", fontSize: "1.1rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, transition: "all 0.2s" }}
-        onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.3)"}
-        onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}>✕</button>
+      <button onClick={onClose} style={{ position: "absolute", top: 20, right: 20, width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", fontSize: "1.1rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10 }}>✕</button>
 
       {/* Counter */}
       <div style={{ position: "absolute", top: 24, left: "50%", transform: "translateX(-50%)", fontFamily: "'Syne', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.35)", letterSpacing: "0.15em", zIndex: 10 }}>
         {current + 1} / {items.length}
       </div>
 
+      {/* Delete button */}
+      {canDelete && (
+        <button onClick={e => { e.stopPropagation(); handleDelete(); }} disabled={deleting} style={{ position: "absolute", top: 20, right: 80, height: 44, paddingInline: "1rem", borderRadius: 6, background: confirmDelete ? "rgba(220,38,38,0.3)" : "rgba(255,255,255,0.06)", border: `1px solid ${confirmDelete ? "#dc2626" : "rgba(255,255,255,0.12)"}`, color: confirmDelete ? "#fca5a5" : "rgba(255,255,255,0.45)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", zIndex: 10, transition: "all 0.2s" }}>
+          {deleting ? <Spinner size={14} color="#fca5a5" /> : <TrashIcon />}
+          {confirmDelete ? "Confirm Delete" : "Delete"}
+        </button>
+      )}
+
       {/* Prev */}
-      <button onClick={e => { e.stopPropagation(); setCurrent(c => (c - 1 + items.length) % items.length); }} style={{ position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)", width: 52, height: 52, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, transition: "all 0.25s" }}
-        onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.2)"}
-        onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>
+      <button onClick={e => { e.stopPropagation(); setCurrent(c => (c - 1 + items.length) % items.length); setConfirmDelete(false); }} style={{ position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)", width: 52, height: 52, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, transition: "all 0.25s" }}>
         <ChevronLeft />
       </button>
-
       {/* Next */}
-      <button onClick={e => { e.stopPropagation(); setCurrent(c => (c + 1) % items.length); }} style={{ position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)", width: 52, height: 52, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, transition: "all 0.25s" }}
-        onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.2)"}
-        onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>
+      <button onClick={e => { e.stopPropagation(); setCurrent(c => (c + 1) % items.length); setConfirmDelete(false); }} style={{ position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)", width: 52, height: 52, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, transition: "all 0.25s" }}>
         <ChevronRight />
       </button>
 
-      {/* Image */}
+      {/* Media */}
       <div onClick={e => e.stopPropagation()} style={{ position: "relative", maxWidth: "min(900px, 90vw)", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
-        <img key={item.src} src={item.src} alt={item.caption || item.event} style={{ maxWidth: "min(900px, 88vw)", maxHeight: "78vh", objectFit: "contain", display: "block", borderRadius: 10, border: "1px solid rgba(201,168,76,0.15)" }}
-          onError={ev => { ev.target.style.display = "none"; }} />
-        {/* Caption bar */}
+        {isVideo ? (
+          <video key={item.storage_path} src={item.storage_path} controls autoPlay style={{ maxWidth: "min(900px, 88vw)", maxHeight: "78vh", display: "block", borderRadius: 10, border: "1px solid rgba(201,168,76,0.15)" }} />
+        ) : (
+          <img key={item.storage_path} src={item.storage_path} alt={item.original_filename || item.event_title} style={{ maxWidth: "min(900px, 88vw)", maxHeight: "78vh", objectFit: "contain", display: "block", borderRadius: 10, border: "1px solid rgba(201,168,76,0.15)" }}
+            onError={ev => { ev.target.style.display = "none"; }} />
+        )}
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(to top, rgba(5,5,15,0.95), transparent)", borderRadius: "0 0 10px 10px", padding: "2rem 1.5rem 1rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
-            <span style={{ background: "rgba(201,168,76,0.9)", color: "#0d0d1a", padding: "0.18rem 0.7rem", borderRadius: 3, fontSize: "0.65rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase" }}>{item.label}</span>
-            <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.1rem", color: "#fff", fontWeight: 600 }}>{item.caption || item.event}</span>
-            <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", marginLeft: "auto" }}>{item.date}</span>
+            <span style={{ background: "rgba(201,168,76,0.9)", color: "#0d0d1a", padding: "0.18rem 0.7rem", borderRadius: 3, fontSize: "0.65rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase" }}>{item.file_type || "photo"}</span>
+            <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.1rem", color: "#fff", fontWeight: 600 }}>{item.event_title || item.original_filename || ""}</span>
+            <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", marginLeft: "auto" }}>{formatDate(item.created_at)}</span>
           </div>
+          {item.file_size && <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.25)", marginTop: "0.3rem" }}>{formatFileSize(item.file_size)}</div>}
         </div>
       </div>
 
       {/* Strip thumbnails */}
       <div style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", display: "flex", gap: "0.4rem", maxWidth: "min(700px, 90vw)", overflowX: "auto", padding: "0 0.5rem" }}>
         {items.map((it, i) => (
-          <div key={it.id} onClick={e => { e.stopPropagation(); setCurrent(i); }} style={{ width: 54, height: 38, borderRadius: 5, overflow: "hidden", flexShrink: 0, cursor: "pointer", border: `1.5px solid ${i === current ? "#C9A84C" : "rgba(255,255,255,0.1)"}`, opacity: i === current ? 1 : 0.45, transition: "all 0.2s" }}>
-            <img src={it.src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={ev => ev.target.style.display = "none"} />
+          <div key={it.id} onClick={e => { e.stopPropagation(); setCurrent(i); setConfirmDelete(false); }} style={{ width: 54, height: 38, borderRadius: 5, overflow: "hidden", flexShrink: 0, cursor: "pointer", border: `1.5px solid ${i === current ? "#C9A84C" : "rgba(255,255,255,0.1)"}`, opacity: i === current ? 1 : 0.45, transition: "all 0.2s" }}>
+            <img src={it.storage_path} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={ev => ev.target.style.display = "none"} />
           </div>
         ))}
       </div>
 
-      {/* Hint */}
       <div style={{ position: "absolute", bottom: 70, right: 20, fontFamily: "'DM Sans', sans-serif", fontSize: "0.7rem", color: "rgba(255,255,255,0.2)", letterSpacing: "0.08em" }}>← → arrow keys</div>
     </div>
   );
 }
 
 // ── Navbar ────────────────────────────────────────────────────────────────────
-function Navbar() {
+function Navbar({ onUploadClick }) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -273,6 +535,11 @@ function Navbar() {
                 onMouseEnter={e => e.target.style.color = "#C9A84C"}
                 onMouseLeave={e => e.target.style.color = l.href === "/gallery" ? "#C9A84C" : "rgba(255,255,255,0.75)"}>{l.label}</a>
             ))}
+            <button onClick={onUploadClick} style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.18)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.08)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)"; }}>
+              <UploadIcon /> Upload
+            </button>
             <a href="/#contact" style={{ background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.6rem 1.4rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.76rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 4px 16px rgba(201,168,76,0.3)" }}>
               Contact
             </a>
@@ -290,7 +557,10 @@ function Navbar() {
         {links.map(l => (
           <a key={l.label} href={l.href} onClick={() => setMenuOpen(false)} style={{ display: "block", fontFamily: "'Syne', sans-serif", fontSize: "1.1rem", fontWeight: 600, color: l.href === "/gallery" ? "#C9A84C" : "rgba(255,255,255,0.75)", textDecoration: "none", padding: "0.9rem 0", borderBottom: "1px solid rgba(255,255,255,0.05)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{l.label}</a>
         ))}
-        <a href="/#contact" onClick={() => setMenuOpen(false)} style={{ display: "block", marginTop: "1.75rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", textDecoration: "none", textAlign: "center", letterSpacing: "0.08em", textTransform: "uppercase" }}>Contact Us</a>
+        <button onClick={() => { setMenuOpen(false); onUploadClick(); }} style={{ display: "block", width: "100%", marginTop: "1rem", padding: "0.75rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          Upload Media
+        </button>
+        <a href="/#contact" onClick={() => setMenuOpen(false)} style={{ display: "block", marginTop: "0.75rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", textDecoration: "none", textAlign: "center", letterSpacing: "0.08em", textTransform: "uppercase" }}>Contact Us</a>
       </div>
       {menuOpen && <div onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 480, background: "rgba(0,0,0,0.5)" }} />}
     </>
@@ -298,9 +568,11 @@ function Navbar() {
 }
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
-function TickerBanner() {
-  const items = ["Running Events", "Hiking Adventures", "Tour Experiences", "Mt. Kenya Day Dash", "Vienna Loop", "Better Together", "Visual Diary", "All Moments"];
-  const doubled = [...items, ...items];
+function TickerBanner({ events }) {
+  const items = events.length > 0
+    ? events.map(e => e.title)
+    : ["Running Events", "Hiking Adventures", "Tour Experiences", "Mt. Kenya Day Dash", "Vienna Loop", "Better Together", "Visual Diary", "All Moments"];
+  const doubled = [...items, ...items, ...items, ...items];
   return (
     <div style={{ background: "var(--gold)", overflow: "hidden", padding: "0.52rem 0" }}>
       <div className="slide-track" style={{ display: "flex", width: "max-content" }}>
@@ -316,29 +588,25 @@ function TickerBanner() {
 }
 
 // ── Page Hero ─────────────────────────────────────────────────────────────────
-function PageHero() {
+function PageHero({ heroImages }) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { setTimeout(() => setLoaded(true), 150); }, []);
 
+  const fallbacks = ["/media/events/mtkd - 1.png", "/media/events/mtkd - 3.png", "/gallery/gallery 1.png", "/media/events/mtkd - 5.png"];
+  const images = heroImages.length >= 4 ? heroImages.slice(0, 4) : fallbacks;
+
   return (
     <section style={{ position: "relative", height: "52vh", minHeight: 380, overflow: "hidden", background: "#080812", display: "flex", alignItems: "flex-end" }}>
-      {/* Background collage of event images */}
       <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, opacity: 0.35 }}>
-        {["/media/events/mtkd - 1.png", "/media/events/mtkd - 3.png", "/gallery/gallery 1.png", "/media/events/mtkd - 5.png"].map((src, i) => (
+        {images.map((src, i) => (
           <div key={i} style={{ overflow: "hidden", position: "relative" }}>
             <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", animation: "heroKenBurns 10s ease-out infinite alternate" }}
               onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i*50+200},20%,10%)`; }} />
           </div>
         ))}
       </div>
-
-      {/* Gradient overlay */}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(8,8,18,0.5) 0%, rgba(8,8,18,0.7) 60%, #0d0d1a 100%)" }} />
-
-      {/* Left accent line */}
       <div style={{ position: "absolute", left: "1.5rem", top: "20%", bottom: "20%", width: 1, background: "linear-gradient(to bottom, transparent, rgba(201,168,76,0.5), transparent)" }} />
-
-      {/* Content */}
       <div style={{ position: "relative", zIndex: 2, maxWidth: 1320, margin: "0 auto", padding: "0 2rem 4rem 3rem", width: "100%" }}>
         <a href="/" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", fontFamily: "'Syne', sans-serif", fontSize: "0.72rem", fontWeight: 600, color: "rgba(255,255,255,0.4)", textDecoration: "none", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "1.25rem", transition: "color 0.2s" }}
           onMouseEnter={e => e.currentTarget.style.color = "#C9A84C"}
@@ -358,18 +626,23 @@ function PageHero() {
 }
 
 // ── Stats Bar ─────────────────────────────────────────────────────────────────
-function StatsBar({ total, filtered }) {
+function StatsBar({ totalPhotos, totalVideos, totalEvents, showing, loading }) {
   return (
     <div style={{ background: "#111122", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "1rem 1.5rem" }}>
       <div style={{ maxWidth: 1320, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
-        <div style={{ display: "flex", align: "center", gap: "2rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap", alignItems: "center" }}>
           {[
-            { val: total, label: "Total Photos" },
-            { val: filtered, label: "Showing" },
-            { val: 2, label: "Events" },
+            { val: totalPhotos, label: "Photos" },
+            { val: totalVideos, label: "Videos" },
+            { val: totalEvents, label: "Events" },
+            { val: showing, label: "Showing" },
           ].map((s, i) => (
             <div key={i} style={{ display: "flex", alignItems: "baseline", gap: "0.45rem" }}>
-              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.5rem", fontWeight: 700, color: "#C9A84C", lineHeight: 1 }}>{s.val}</span>
+              {loading ? (
+                <div className="skeleton" style={{ width: 32, height: 24, borderRadius: 4 }} />
+              ) : (
+                <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.5rem", fontWeight: 700, color: "#C9A84C", lineHeight: 1 }}>{s.val}</span>
+              )}
               <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", color: "rgba(255,255,255,0.35)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{s.label}</span>
             </div>
           ))}
@@ -381,30 +654,60 @@ function StatsBar({ total, filtered }) {
 }
 
 // ── Gallery Grid ──────────────────────────────────────────────────────────────
-function GalleryGrid() {
+function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, showToast }) {
   const [ref, visible] = useInView();
   const [activeFilter, setActiveFilter] = useState("All");
-  const [activeEvent, setActiveEvent]   = useState("All Events");
+  const [activeEventId, setActiveEventId] = useState("all");
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  const [layout, setLayout] = useState("masonry"); // "masonry" | "grid" | "featured"
+  const [layout, setLayout] = useState("masonry");
 
-  const filtered = ALL_MEDIA.filter(m => {
-    const matchF = activeFilter === "All" || m.label === activeFilter;
-    const matchE = activeEvent === "All Events" || m.event === activeEvent;
-    return matchF && matchE;
+  // Build label filters from events
+  const labelSet = new Set(events.map(e => guessLabel(e)));
+  const FILTERS = ["All", ...Array.from(labelSet)];
+
+  // Filtered media
+  const filtered = allMedia.filter(item => {
+    const matchLabel = activeFilter === "All" || guessLabel({ title: item.event_title }) === activeFilter;
+    const matchEvent = activeEventId === "all" || item.event_id === activeEventId;
+    return matchLabel && matchEvent;
   });
 
-  // Group by event for the "by event" layout
+  // Group by event for featured layout
   const byEvent = filtered.reduce((acc, item) => {
-    if (!acc[item.event]) acc[item.event] = [];
-    acc[item.event].push(item);
+    const key = item.event_id;
+    if (!acc[key]) acc[key] = { name: item.event_title, items: [] };
+    acc[key].items.push(item);
     return acc;
   }, {});
 
-  const openLightbox = (globalItem) => {
-    const idx = filtered.findIndex(f => f.id === globalItem.id);
+  const openLightbox = (item) => {
+    const idx = filtered.findIndex(f => f.id === item.id);
     if (idx >= 0) setLightboxIndex(idx);
   };
+
+  const handleDelete = async (mediaId, currentIdx) => {
+    try {
+      await api.deleteMedia(mediaId);
+      showToast("Media deleted", "success");
+      onDelete(mediaId);
+      if (filtered.length <= 1) setLightboxIndex(null);
+    } catch (err) {
+      showToast(err.message || "Delete failed", "error");
+    }
+  };
+
+  if (error) {
+    return (
+      <section style={{ padding: "5rem 1.5rem", textAlign: "center" }}>
+        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>⚠️</div>
+        <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.6rem", color: "#fff", marginBottom: "0.75rem" }}>Could not load gallery</h3>
+        <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", marginBottom: "1.5rem" }}>{error}</p>
+        <button onClick={onRefresh} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.5rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer" }}>
+          <RefreshIcon /> Retry
+        </button>
+      </section>
+    );
+  }
 
   return (
     <section ref={ref} style={{ padding: "3rem 1.5rem 6rem", background: "#0d0d1a", minHeight: "60vh" }}>
@@ -412,24 +715,34 @@ function GalleryGrid() {
 
         {/* Controls */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "2.5rem", flexWrap: "wrap", gap: "1.25rem", opacity: visible ? 1 : 0, transition: "all 0.6s" }}>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            {/* Category filters */}
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
             {FILTERS.map(f => (
               <button key={f} className="filter-btn" onClick={() => setActiveFilter(f)} style={{ padding: "0.5rem 1.1rem", borderRadius: 4, border: "1px solid", borderColor: activeFilter === f ? "#C9A84C" : "rgba(255,255,255,0.1)", background: activeFilter === f ? "rgba(201,168,76,0.12)" : "transparent", color: activeFilter === f ? "#C9A84C" : "rgba(255,255,255,0.45)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
                 {f}
               </button>
             ))}
-            <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.1)", alignSelf: "center", margin: "0 0.25rem" }} />
-            {/* Event filters */}
-            {EVENTS.map(e => (
-              <button key={e} className="filter-btn" onClick={() => setActiveEvent(e)} style={{ padding: "0.5rem 1.1rem", borderRadius: 4, border: "1px solid", borderColor: activeEvent === e ? "rgba(201,168,76,0.5)" : "rgba(255,255,255,0.07)", background: activeEvent === e ? "rgba(201,168,76,0.07)" : "transparent", color: activeEvent === e ? "rgba(201,168,76,0.9)" : "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: "0.78rem", cursor: "pointer", letterSpacing: "0.02em" }}>
-                {e}
-              </button>
-            ))}
+            {events.length > 0 && (
+              <>
+                <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.1)", alignSelf: "center", margin: "0 0.25rem" }} />
+                <button className="filter-btn" onClick={() => setActiveEventId("all")} style={{ padding: "0.5rem 1.1rem", borderRadius: 4, border: "1px solid", borderColor: activeEventId === "all" ? "rgba(201,168,76,0.5)" : "rgba(255,255,255,0.07)", background: activeEventId === "all" ? "rgba(201,168,76,0.07)" : "transparent", color: activeEventId === "all" ? "rgba(201,168,76,0.9)" : "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: "0.78rem", cursor: "pointer" }}>
+                  All Events
+                </button>
+                {events.map(ev => (
+                  <button key={ev.id} className="filter-btn" onClick={() => setActiveEventId(ev.id)} style={{ padding: "0.5rem 1.1rem", borderRadius: 4, border: "1px solid", borderColor: activeEventId === ev.id ? "rgba(201,168,76,0.5)" : "rgba(255,255,255,0.07)", background: activeEventId === ev.id ? "rgba(201,168,76,0.07)" : "transparent", color: activeEventId === ev.id ? "rgba(201,168,76,0.9)" : "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: "0.78rem", cursor: "pointer" }}>
+                    {ev.title}
+                  </button>
+                ))}
+              </>
+            )}
           </div>
 
-          {/* Layout toggle */}
-          <div style={{ display: "flex", gap: "0.4rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <button onClick={onRefresh} title="Refresh gallery" style={{ width: 36, height: 36, borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.35)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.color = "#C9A84C"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}>
+              <RefreshIcon />
+            </button>
+            {/* Layout toggles */}
             {[
               { key: "masonry", icon: "⊞", label: "Masonry" },
               { key: "grid",    icon: "▦", label: "Grid" },
@@ -442,14 +755,22 @@ function GalleryGrid() {
           </div>
         </div>
 
-        {filtered.length === 0 && (
-          <div style={{ textAlign: "center", padding: "5rem 0", color: "rgba(255,255,255,0.25)", fontFamily: "'DM Sans', sans-serif" }}>
-            No photos match the selected filters.
+        {/* Loading skeleton */}
+        {loading && <SkeletonGrid count={9} />}
+
+        {/* Empty state */}
+        {!loading && filtered.length === 0 && (
+          <div style={{ textAlign: "center", padding: "5rem 0" }}>
+            <div style={{ fontSize: "3rem", marginBottom: "1rem", opacity: 0.5 }}>📷</div>
+            <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.4rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>No media found</p>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "rgba(255,255,255,0.2)" }}>
+              {events.length === 0 ? "No events exist yet — create an event to get started." : "Try a different filter or upload photos to this event."}
+            </p>
           </div>
         )}
 
-        {/* ── Masonry layout ── */}
-        {layout === "masonry" && filtered.length > 0 && (
+        {/* Masonry */}
+        {!loading && layout === "masonry" && filtered.length > 0 && (
           <div style={{ columns: "3 280px", gap: "1rem" }}>
             {filtered.map((item, i) => (
               <MasonryItem key={item.id} item={item} index={i} visible={visible} onClick={() => openLightbox(item)} />
@@ -457,8 +778,8 @@ function GalleryGrid() {
           </div>
         )}
 
-        {/* ── Grid layout ── */}
-        {layout === "grid" && filtered.length > 0 && (
+        {/* Grid */}
+        {!loading && layout === "grid" && filtered.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "1rem" }}>
             {filtered.map((item, i) => (
               <GridItem key={item.id} item={item} index={i} visible={visible} onClick={() => openLightbox(item)} />
@@ -466,48 +787,65 @@ function GalleryGrid() {
           </div>
         )}
 
-        {/* ── Featured layout (by event groups) ── */}
-        {layout === "featured" && filtered.length > 0 && (
+        {/* Featured */}
+        {!loading && layout === "featured" && filtered.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "4rem" }}>
-            {Object.entries(byEvent).map(([eventName, eventItems]) => (
-              <EventGroup key={eventName} name={eventName} items={eventItems} visible={visible} onOpen={(item) => openLightbox(item)} />
+            {Object.entries(byEvent).map(([eventId, group]) => (
+              <EventGroup key={eventId} name={group.name} items={group.items} visible={visible} onOpen={openLightbox} />
             ))}
           </div>
         )}
       </div>
 
-      {lightboxIndex !== null && (
-        <Lightbox items={filtered} startIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
+      {lightboxIndex !== null && filtered.length > 0 && (
+        <Lightbox
+          items={filtered}
+          startIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onDelete={handleDelete}
+          canDelete={true}
+        />
       )}
     </section>
   );
 }
 
 function MasonryItem({ item, index, visible, onClick }) {
-  const heights = ["auto"];
+  const isVideo = item.file_type === "video" || (item.storage_path || "").match(/\.(mp4|mov|avi|webm)$/i);
   return (
     <div className="gallery-item" onClick={onClick} style={{ position: "relative", borderRadius: 10, overflow: "hidden", cursor: "zoom-in", marginBottom: "1rem", breakInside: "avoid", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(20px)", transition: `opacity 0.6s ${(index % 6) * 0.07}s, transform 0.6s ${(index % 6) * 0.07}s`, border: "1px solid rgba(255,255,255,0.05)" }}>
-      <img src={item.src} alt={item.caption || item.event} style={{ width: "100%", display: "block", objectFit: "cover" }}
-        onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${index*33+190},20%,12%)`; ev.target.parentNode.style.height = "200px"; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.5rem">${FALLBACK[index % FALLBACK.length]}</div>`; }} />
+      {isVideo ? (
+        <video src={item.storage_path} style={{ width: "100%", display: "block", objectFit: "cover", pointerEvents: "none" }} muted playsInline />
+      ) : (
+        <img src={item.storage_path} alt={item.original_filename || item.event_title} style={{ width: "100%", display: "block", objectFit: "cover" }}
+          onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${index*33+190},20%,12%)`; ev.target.parentNode.style.minHeight = "200px"; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.5rem">${FALLBACK_EMOJIS[index % FALLBACK_EMOJIS.length]}</div>`; }} />
+      )}
       <div className="overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.92) 0%, transparent 55%)" }} />
+      {isVideo && <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", borderRadius: 4, padding: "0.2rem 0.5rem", fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", color: "rgba(255,255,255,0.7)", fontWeight: 700, letterSpacing: "0.08em" }}>VIDEO</div>}
       <div className="caption" style={{ position: "absolute", bottom: 14, left: 14, right: 14 }}>
-        <span style={{ background: "rgba(201,168,76,0.9)", color: "#0d0d1a", padding: "0.15rem 0.65rem", borderRadius: 2, fontSize: "0.62rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase", display: "inline-block", marginBottom: "0.35rem" }}>{item.label}</span>
-        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: "0.95rem", color: "#fff" }}>{item.caption || item.event}</div>
-        <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.45)", marginTop: 2 }}>{item.date}</div>
+        <span style={{ background: "rgba(201,168,76,0.9)", color: "#0d0d1a", padding: "0.15rem 0.65rem", borderRadius: 2, fontSize: "0.62rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase", display: "inline-block", marginBottom: "0.35rem" }}>{item.file_type || "photo"}</span>
+        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: "0.95rem", color: "#fff" }}>{item.event_title}</div>
+        <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.45)", marginTop: 2 }}>{formatDate(item.created_at)}</div>
       </div>
     </div>
   );
 }
 
 function GridItem({ item, index, visible, onClick }) {
+  const isVideo = item.file_type === "video" || (item.storage_path || "").match(/\.(mp4|mov|avi|webm)$/i);
   return (
     <div className="gallery-item" onClick={onClick} style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "4/3", cursor: "zoom-in", opacity: visible ? 1 : 0, transform: visible ? "none" : "scale(0.96)", transition: `all 0.6s ${(index % 6) * 0.07}s`, background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.05)" }}>
-      <img src={item.src} alt={item.caption || item.event} style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${index*33+190},20%,12%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.8rem">${FALLBACK[index % FALLBACK.length]}</div>`; }} />
+      {isVideo ? (
+        <video src={item.storage_path} style={{ width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }} muted playsInline />
+      ) : (
+        <img src={item.storage_path} alt={item.original_filename || item.event_title} style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${index*33+190},20%,12%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.8rem">${FALLBACK_EMOJIS[index % FALLBACK_EMOJIS.length]}</div>`; }} />
+      )}
       <div className="overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.9) 0%, transparent 55%)" }} />
+      {isVideo && <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(0,0,0,0.6)", borderRadius: 4, padding: "0.2rem 0.5rem", fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", color: "rgba(255,255,255,0.7)", fontWeight: 700 }}>VIDEO</div>}
       <div className="caption" style={{ position: "absolute", bottom: 14, left: 14, right: 14 }}>
-        <span style={{ background: "rgba(201,168,76,0.9)", color: "#0d0d1a", padding: "0.15rem 0.65rem", borderRadius: 2, fontSize: "0.62rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase", display: "inline-block", marginBottom: "0.35rem" }}>{item.label}</span>
-        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: "0.95rem", color: "#fff" }}>{item.caption || item.event}</div>
+        <span style={{ background: "rgba(201,168,76,0.9)", color: "#0d0d1a", padding: "0.15rem 0.65rem", borderRadius: 2, fontSize: "0.62rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase", display: "inline-block", marginBottom: "0.35rem" }}>{item.file_type || "photo"}</span>
+        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: "0.95rem", color: "#fff" }}>{item.event_title}</div>
       </div>
     </div>
   );
@@ -520,32 +858,29 @@ function EventGroup({ name, items, visible, onOpen }) {
       <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem", opacity: vis ? 1 : 0, transition: "all 0.6s" }}>
         <div style={{ width: 3, height: 28, background: "#C9A84C", borderRadius: 2 }} />
         <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.75rem", fontWeight: 700, color: "#fff" }}>{name}</h3>
-        <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", color: "rgba(255,255,255,0.35)", letterSpacing: "0.1em", textTransform: "uppercase", marginLeft: "0.25rem" }}>{items.length} Photos</span>
+        <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", color: "rgba(255,255,255,0.35)", letterSpacing: "0.1em", textTransform: "uppercase", marginLeft: "0.25rem" }}>{items.length} {items.length === 1 ? "File" : "Files"}</span>
       </div>
-      {/* Hero + grid combo */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "0.85rem" }}>
-        {/* Featured first image large */}
         {items[0] && (
           <div className="gallery-item" onClick={() => onOpen(items[0])} style={{ position: "relative", borderRadius: 12, overflow: "hidden", aspectRatio: "16/7", cursor: "zoom-in", background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.05)", opacity: vis ? 1 : 0, transition: "all 0.7s 0.05s" }}>
-            <img src={items[0].src} alt={items[0].caption || items[0].event} style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            <img src={items[0].storage_path} alt={items[0].event_title} style={{ width: "100%", height: "100%", objectFit: "cover" }}
               onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = "#1a1a2e"; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:4rem">⛰️</div>`; }} />
             <div className="overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.85) 0%, transparent 50%)" }} />
             <div className="caption" style={{ position: "absolute", bottom: 24, left: 24 }}>
               <span style={{ background: "rgba(201,168,76,0.9)", color: "#0d0d1a", padding: "0.2rem 0.8rem", borderRadius: 2, fontSize: "0.65rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase", display: "inline-block", marginBottom: "0.5rem" }}>Featured</span>
-              <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, fontSize: "1.4rem", color: "#fff" }}>{items[0].caption || items[0].event}</div>
+              <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, fontSize: "1.4rem", color: "#fff" }}>{items[0].event_title}</div>
             </div>
           </div>
         )}
-        {/* Rest in grid */}
         {items.length > 1 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px,1fr))", gap: "0.85rem" }}>
             {items.slice(1).map((item, i) => (
               <div key={item.id} className="gallery-item" onClick={() => onOpen(item)} style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "4/3", cursor: "zoom-in", background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.05)", opacity: vis ? 1 : 0, transition: `all 0.6s ${0.12 + i * 0.07}s` }}>
-                <img src={item.src} alt={item.caption || item.event} style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i*50+200},18%,12%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.5rem">${FALLBACK[(i+1) % FALLBACK.length]}</div>`; }} />
+                <img src={item.storage_path} alt={item.event_title} style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i*50+200},18%,12%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.5rem">${FALLBACK_EMOJIS[(i+1) % FALLBACK_EMOJIS.length]}</div>`; }} />
                 <div className="overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.88) 0%, transparent 55%)" }} />
                 <div className="caption" style={{ position: "absolute", bottom: 12, left: 12 }}>
-                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: "0.82rem", color: "#fff" }}>{item.caption || item.event}</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: "0.82rem", color: "#fff" }}>{item.original_filename || item.event_title}</div>
                 </div>
               </div>
             ))}
@@ -568,9 +903,7 @@ function SocialCTA() {
     <section ref={ref} style={{ padding: "5rem 1.5rem", background: "#111122", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
       <div style={{ maxWidth: 760, margin: "0 auto", textAlign: "center", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(20px)", transition: "all 0.7s" }}>
         <div style={{ width: 1, height: 60, background: "linear-gradient(to bottom, transparent, rgba(201,168,76,0.5))", margin: "0 auto 2rem" }} />
-        <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem, 5vw, 3rem)", fontWeight: 700, color: "#fff", marginBottom: "1rem" }}>
-          More Moments on Social
-        </h2>
+        <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem, 5vw, 3rem)", fontWeight: 700, color: "#fff", marginBottom: "1rem" }}>More Moments on Social</h2>
         <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "0.95rem", lineHeight: 1.75, marginBottom: "2.5rem" }}>
           Follow ONE4ONE on social media for real-time event updates, behind-the-scenes moments, and community highlights.
         </p>
@@ -605,27 +938,149 @@ function Footer() {
   );
 }
 
-// ── Wrapping component ────────────────────────────────────────────────────────
-function GalleryPageInner() {
-  return (
-    <>
-      <StatsBar total={ALL_MEDIA.length} filtered={ALL_MEDIA.length} />
-      <GalleryGrid />
-      <SocialCTA />
-    </>
-  );
-}
-
-// ── Main Export ───────────────────────────────────────────────────────────────
+// ── Main App ──────────────────────────────────────────────────────────────────
 export default function GalleryPage() {
+  const [events, setEvents] = useState([]);
+  const [allMedia, setAllMedia] = useState([]);
+  const [stats, setStats] = useState({ totalPhotos: 0, totalVideos: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const showToast = useCallback((message, type = "success") => {
+    setToast({ message, type, id: Date.now() });
+  }, []);
+
+  const loadGallery = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // 1. Fetch all events
+      const eventsData = await api.getEvents();
+      const eventList = eventsData.events || [];
+      setEvents(eventList);
+
+      // 2. For each event, fetch its media in parallel
+      const mediaResults = await Promise.allSettled(
+        eventList.map(ev => api.getEventMedia(ev.id))
+      );
+
+      let combinedMedia = [];
+      let totalPhotos = 0;
+      let totalVideos = 0;
+
+      mediaResults.forEach((result, i) => {
+        if (result.status === "fulfilled") {
+          const files = result.value.media_files || [];
+          // Attach event title to each media item for display
+          const enriched = files.map(f => ({
+            ...f,
+            event_title: eventList[i].title,
+          }));
+          combinedMedia = [...combinedMedia, ...enriched];
+          totalPhotos += files.filter(f => f.file_type === "photo").length;
+          totalVideos += files.filter(f => f.file_type === "video").length;
+        }
+      });
+
+      // Sort newest first
+      combinedMedia.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+      setAllMedia(combinedMedia);
+      setStats({ totalPhotos, totalVideos });
+    } catch (err) {
+      setError(err.message || "Failed to load gallery data");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadGallery();
+  }, [loadGallery]);
+
+  const handleUploaded = useCallback((eventId, newMedia) => {
+    const event = events.find(e => e.id === eventId);
+    const enriched = {
+      ...newMedia,
+      event_id: eventId,
+      event_title: event?.title || "Event",
+      file_type: newMedia.file_type || "photo",
+      created_at: new Date().toISOString(),
+    };
+    setAllMedia(prev => [enriched, ...prev]);
+    if (enriched.file_type === "photo") setStats(s => ({ ...s, totalPhotos: s.totalPhotos + 1 }));
+    else setStats(s => ({ ...s, totalVideos: s.totalVideos + 1 }));
+  }, [events]);
+
+  const handleDelete = useCallback((mediaId) => {
+    setAllMedia(prev => {
+      const item = prev.find(m => m.id === mediaId);
+      if (item?.file_type === "photo") setStats(s => ({ ...s, totalPhotos: Math.max(0, s.totalPhotos - 1) }));
+      if (item?.file_type === "video") setStats(s => ({ ...s, totalVideos: Math.max(0, s.totalVideos - 1) }));
+      return prev.filter(m => m.id !== mediaId);
+    });
+  }, []);
+
+  // Hero images: first 4 photos from all media
+  const heroImages = allMedia
+    .filter(m => m.file_type === "photo" && m.storage_path)
+    .slice(0, 4)
+    .map(m => m.storage_path);
+
   return (
     <>
       <style>{GLOBAL_CSS}</style>
-      <Navbar />
-      <PageHero />
-      <TickerBanner />
-      <GalleryPageInner />
+      <Navbar onUploadClick={() => setShowUpload(true)} />
+      <PageHero heroImages={heroImages} />
+      <TickerBanner events={events} />
+      <StatsBar
+        totalPhotos={stats.totalPhotos}
+        totalVideos={stats.totalVideos}
+        totalEvents={events.length}
+        showing={allMedia.length}
+        loading={loading}
+      />
+      <GalleryGrid
+        events={events}
+        allMedia={allMedia}
+        loading={loading}
+        error={error}
+        onRefresh={loadGallery}
+        onDelete={handleDelete}
+        showToast={showToast}
+      />
+      <SocialCTA />
       <Footer />
+
+      {showUpload && events.length > 0 && (
+        <UploadModal
+          events={events}
+          onClose={() => setShowUpload(false)}
+          onUploaded={handleUploaded}
+          showToast={showToast}
+        />
+      )}
+
+      {showUpload && events.length === 0 && (
+        <div onClick={() => setShowUpload(false)} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, padding: "2rem", maxWidth: 400, textAlign: "center", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
+            <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>📭</div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.5rem", color: "#fff", marginBottom: "0.75rem" }}>No Events Yet</h3>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "0.88rem", lineHeight: 1.6, marginBottom: "1.5rem" }}>
+              You need at least one event before uploading media. Please create an event via the backend first.
+            </p>
+            <button onClick={() => setShowUpload(false)} style={{ padding: "0.7rem 1.5rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => setToast(null)} />
+      )}
     </>
   );
 }
