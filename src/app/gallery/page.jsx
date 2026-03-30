@@ -98,6 +98,9 @@ const GLOBAL_CSS = `
     border-radius: 10px;
   }
 
+  .event-row { transition: background 0.2s; }
+  .event-row:hover { background: rgba(201,168,76,0.05) !important; }
+
   @media (max-width: 768px) {
     .desktop-nav { display: none !important; }
     .mobile-menu-btn { display: flex !important; }
@@ -115,7 +118,47 @@ const api = {
     if (!res.ok) throw new Error(`Events fetch failed: ${res.status}`);
     const json = await res.json();
     if (json.status !== "success") throw new Error(json.message || "Failed to load events");
-    return json.data; // { events: [], pagination: {} }
+    return json.data;
+  },
+
+  async getEventById(eventId) {
+    const res = await fetch(`${BASE_URL}/api/events/${eventId}`);
+    if (!res.ok) throw new Error(`Event fetch failed: ${res.status}`);
+    const json = await res.json();
+    if (json.status !== "success") throw new Error(json.message || "Failed to load event");
+    return json.data;
+  },
+
+  async createEvent(payload) {
+    const res = await fetch(`${BASE_URL}/api/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`Create event failed: ${res.status}`);
+    const json = await res.json();
+    if (json.status !== "success") throw new Error(json.message || "Create failed");
+    return json.data;
+  },
+
+  async updateEvent(eventId, payload) {
+    const res = await fetch(`${BASE_URL}/api/events/${eventId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`Update event failed: ${res.status}`);
+    const json = await res.json();
+    if (json.status !== "success") throw new Error(json.message || "Update failed");
+    return json.data;
+  },
+
+  async deleteEvent(eventId) {
+    const res = await fetch(`${BASE_URL}/api/events/${eventId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`Delete event failed: ${res.status}`);
+    const json = await res.json();
+    if (json.status !== "success") throw new Error(json.message || "Delete failed");
+    return json;
   },
 
   async getEventMedia(eventId, fileType = null, page = 1, limit = 100) {
@@ -125,7 +168,7 @@ const api = {
     if (!res.ok) throw new Error(`Media fetch failed: ${res.status}`);
     const json = await res.json();
     if (json.status !== "success") throw new Error(json.message || "Failed to load media");
-    return json.data; // { media_files: [], pagination: {} }
+    return json.data;
   },
 
   async getEventMediaStats(eventId) {
@@ -133,7 +176,7 @@ const api = {
     if (!res.ok) throw new Error(`Stats fetch failed: ${res.status}`);
     const json = await res.json();
     if (json.status !== "success") throw new Error(json.message || "Failed to load stats");
-    return json.data; // { total_files, total_photos, total_videos, total_size_mb }
+    return json.data;
   },
 
   async uploadMedia(eventId, file, fileType) {
@@ -154,18 +197,6 @@ const api = {
     const res = await fetch(`${BASE_URL}/api/media/${mediaId}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
     return res.json();
-  },
-
-  async createEvent(payload) {
-    const res = await fetch(`${BASE_URL}/api/events`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error(`Create event failed: ${res.status}`);
-    const json = await res.json();
-    if (json.status !== "success") throw new Error(json.message || "Create failed");
-    return json.data;
   },
 };
 
@@ -189,13 +220,18 @@ function formatDate(dateStr) {
   return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
 
+function formatDateForInput(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  return d.toISOString().split("T")[0];
+}
+
 function formatFileSize(bytes) {
   if (!bytes) return "";
   const mb = bytes / (1024 * 1024);
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
 }
 
-// Derive label from event title (fallback heuristic)
 function guessLabel(event) {
   const t = (event.title || "").toLowerCase();
   if (t.includes("run") || t.includes("loop") || t.includes("marathon") || t.includes("5k") || t.includes("10k")) return "Running";
@@ -235,6 +271,22 @@ const RefreshIcon = () => (
 const TrashIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+  </svg>
+);
+const EditIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+  </svg>
+);
+const PlusIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+  </svg>
+);
+const CalendarIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
   </svg>
 );
 const InstagramIcon = ({ size = 16 }) => (
@@ -287,6 +339,439 @@ function Toast({ message, type = "success", onClose }) {
       <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "#fff", flex: 1 }}>{message}</span>
       <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: "1rem", lineHeight: 1, padding: 0 }}>✕</button>
     </div>
+  );
+}
+
+// ── Input Field Helper ────────────────────────────────────────────────────────
+function FormField({ label, required, children }) {
+  return (
+    <div style={{ marginBottom: "1rem" }}>
+      <label style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.12em", textTransform: "uppercase", display: "block", marginBottom: "0.45rem" }}>
+        {label}{required && <span style={{ color: "#C9A84C", marginLeft: 3 }}>*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+const inputStyle = {
+  width: "100%",
+  padding: "0.65rem 0.9rem",
+  background: "#0d0d1a",
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 6,
+  color: "#fff",
+  fontFamily: "'DM Sans', sans-serif",
+  fontSize: "0.88rem",
+  outline: "none",
+  transition: "border-color 0.2s",
+};
+
+// ── Event Form Modal (Create / Edit) ──────────────────────────────────────────
+function EventFormModal({ event, onClose, onSaved, showToast }) {
+  const isEdit = !!event;
+  const [form, setForm] = useState({
+    title: event?.title || "",
+    description: event?.description || "",
+    event_date: event?.event_date ? formatDateForInput(event.event_date) : "",
+    location: event?.location || "",
+    cover_image: event?.cover_image || "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [fieldFocus, setFieldFocus] = useState(null);
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+
+  const handleSubmit = async () => {
+    if (!form.title.trim()) { showToast("Title is required", "error"); return; }
+    if (!form.event_date) { showToast("Event date is required", "error"); return; }
+    setSaving(true);
+    try {
+      let result;
+      if (isEdit) {
+        result = await api.updateEvent(event.id, form);
+        showToast("Event updated successfully!", "success");
+      } else {
+        result = await api.createEvent(form);
+        showToast("Event created successfully!", "success");
+      }
+      onSaved(result, isEdit);
+      onClose();
+    } catch (err) {
+      showToast(err.message || (isEdit ? "Update failed" : "Create failed"), "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const dynBorder = (field) => ({
+    ...inputStyle,
+    borderColor: fieldFocus === field ? "rgba(201,168,76,0.6)" : "rgba(255,255,255,0.12)",
+  });
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2100, background: "rgba(5,5,15,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, padding: "2rem", width: "100%", maxWidth: 540, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", maxHeight: "90vh", overflowY: "auto" }}>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.75rem" }}>
+          <div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.3rem" }}>
+              Events Manager
+            </div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.7rem", fontWeight: 700, color: "#fff" }}>
+              {isEdit ? "Edit Event" : "Create New Event"}
+            </h3>
+          </div>
+          <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 4 }}>✕</button>
+        </div>
+
+        {/* Fields */}
+        <FormField label="Event Title" required>
+          <input
+            value={form.title}
+            onChange={set("title")}
+            onFocus={() => setFieldFocus("title")}
+            onBlur={() => setFieldFocus(null)}
+            placeholder="e.g. Mt. Kenya Day Dash 2026"
+            style={dynBorder("title")}
+          />
+        </FormField>
+
+        <FormField label="Description">
+          <textarea
+            value={form.description}
+            onChange={set("description")}
+            onFocus={() => setFieldFocus("description")}
+            onBlur={() => setFieldFocus(null)}
+            placeholder="A short description of the event..."
+            rows={3}
+            style={{ ...dynBorder("description"), resize: "vertical", minHeight: 80 }}
+          />
+        </FormField>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+          <FormField label="Event Date" required>
+            <input
+              type="date"
+              value={form.event_date}
+              onChange={set("event_date")}
+              onFocus={() => setFieldFocus("event_date")}
+              onBlur={() => setFieldFocus(null)}
+              style={{ ...dynBorder("event_date"), colorScheme: "dark" }}
+            />
+          </FormField>
+
+          <FormField label="Location">
+            <input
+              value={form.location}
+              onChange={set("location")}
+              onFocus={() => setFieldFocus("location")}
+              onBlur={() => setFieldFocus(null)}
+              placeholder="e.g. Nairobi, Kenya"
+              style={dynBorder("location")}
+            />
+          </FormField>
+        </div>
+
+        <FormField label="Cover Image URL">
+          <input
+            value={form.cover_image}
+            onChange={set("cover_image")}
+            onFocus={() => setFieldFocus("cover_image")}
+            onBlur={() => setFieldFocus(null)}
+            placeholder="https://... (optional)"
+            style={dynBorder("cover_image")}
+          />
+        </FormField>
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.75rem" }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            style={{ flex: 2, padding: "0.75rem", borderRadius: 6, background: saving ? "rgba(201,168,76,0.2)" : "linear-gradient(135deg,#C9A84C,#b8962e)", color: saving ? "rgba(201,168,76,0.4)" : "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: saving ? "not-allowed" : "pointer", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+            {saving ? <><Spinner size={16} color="#C9A84C" /> {isEdit ? "Saving..." : "Creating..."}</> : isEdit ? "Save Changes" : "Create Event"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Delete Confirm Modal ──────────────────────────────────────────────────────
+function DeleteEventModal({ event, onClose, onDeleted, showToast }) {
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.deleteEvent(event.id);
+      showToast("Event deleted successfully", "success");
+      onDeleted(event.id);
+      onClose();
+    } catch (err) {
+      showToast(err.message || "Delete failed", "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2200, background: "rgba(5,5,15,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 16, padding: "2rem", width: "100%", maxWidth: 420, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", textAlign: "center" }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.25)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem", fontSize: "1.5rem" }}>🗑️</div>
+        <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "0.75rem" }}>Delete Event?</h3>
+        <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.45)", fontSize: "0.88rem", lineHeight: 1.65, marginBottom: "0.5rem" }}>
+          You are about to delete <strong style={{ color: "#fff" }}>{event.title}</strong>.
+        </p>
+        <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(220,38,38,0.8)", fontSize: "0.82rem", marginBottom: "1.75rem" }}>
+          ⚠️ This will also delete all photos and videos under this event. This cannot be undone.
+        </p>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Cancel
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{ flex: 1.5, padding: "0.75rem", borderRadius: 6, background: deleting ? "rgba(220,38,38,0.15)" : "rgba(220,38,38,0.85)", color: "#fff", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: deleting ? "not-allowed" : "pointer", letterSpacing: "0.08em", textTransform: "uppercase", border: "1px solid rgba(220,38,38,0.4)", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+            {deleting ? <><Spinner size={14} color="#fff" /> Deleting...</> : <><TrashIcon /> Yes, Delete</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Events Manager Modal ──────────────────────────────────────────────────────
+function EventsManagerModal({ onClose, showToast, onEventsChanged }) {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [deletingEvent, setDeletingEvent] = useState(null);
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  const loadEvents = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.getEvents();
+      setEvents(data.events || []);
+    } catch (err) {
+      setError(err.message || "Failed to load events");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadEvents(); }, [loadEvents]);
+
+  const handleSaved = (savedEvent, isEdit) => {
+    if (isEdit) {
+      setEvents(prev => prev.map(e => e.id === savedEvent.id ? { ...e, ...savedEvent } : e));
+    } else {
+      setEvents(prev => [savedEvent, ...prev]);
+    }
+    onEventsChanged();
+  };
+
+  const handleDeleted = (eventId) => {
+    setEvents(prev => prev.filter(e => e.id !== eventId));
+    onEventsChanged();
+  };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.40)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, width: "100%", maxWidth: 700, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", display: "flex", flexDirection: "column", maxHeight: "88vh" }}>
+
+          {/* Modal Header */}
+          <div style={{ padding: "1.75rem 2rem 1.25rem", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.3rem" }}>Admin</div>
+                <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.8rem", fontWeight: 700, color: "#fff" }}>Events Manager</h2>
+              </div>
+              <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
+                <button
+                  onClick={() => setShowCreateForm(true)}
+                  style={{ display: "flex", alignItems: "center", gap: "0.45rem", padding: "0.55rem 1.1rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  <PlusIcon /> New Event
+                </button>
+                <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+              </div>
+            </div>
+
+            {/* Stats row */}
+            <div style={{ display: "flex", gap: "1.5rem", marginTop: "1rem" }}>
+              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.82rem", color: "rgba(255,255,255,0.35)" }}>
+                <span style={{ color: "#C9A84C", fontWeight: 700, fontSize: "1.1rem", fontFamily: "'Cormorant Garamond', serif" }}>{events.length}</span> {events.length === 1 ? "event" : "events"} total
+              </div>
+              <button onClick={loadEvents} style={{ display: "flex", alignItems: "center", gap: "0.4rem", background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", padding: 0, transition: "color 0.2s" }}
+                onMouseEnter={e => e.currentTarget.style.color = "#C9A84C"}
+                onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.3)"}>
+                <RefreshIcon /> Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div style={{ overflowY: "auto", flex: 1, padding: "0.5rem 0" }}>
+
+            {/* Loading */}
+            {loading && (
+              <div style={{ padding: "3rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem" }}>
+                <Spinner size={32} />
+                <span style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.3)", fontSize: "0.85rem" }}>Loading events...</span>
+              </div>
+            )}
+
+            {/* Error */}
+            {!loading && error && (
+              <div style={{ padding: "2.5rem", textAlign: "center" }}>
+                <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>⚠️</div>
+                <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.35)", fontSize: "0.88rem", marginBottom: "1rem" }}>{error}</p>
+                <button onClick={loadEvents} style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.6rem 1.25rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", borderRadius: 6, color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  <RefreshIcon /> Retry
+                </button>
+              </div>
+            )}
+
+            {/* Empty */}
+            {!loading && !error && events.length === 0 && (
+              <div style={{ padding: "3rem", textAlign: "center" }}>
+                <div style={{ fontSize: "2.5rem", marginBottom: "1rem", opacity: 0.5 }}>📭</div>
+                <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.3rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>No events yet</p>
+                <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.82rem", color: "rgba(255,255,255,0.2)", marginBottom: "1.5rem" }}>Create your first event to start uploading media.</p>
+                <button onClick={() => setShowCreateForm(true)} style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", padding: "0.7rem 1.4rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  <PlusIcon /> Create First Event
+                </button>
+              </div>
+            )}
+
+            {/* Events List */}
+            {!loading && !error && events.length > 0 && (
+              <div>
+                {/* Column headers */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 80px 100px", gap: "0.5rem", padding: "0.5rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  {["Event", "Date", "Photos", "Videos", "Actions"].map(h => (
+                    <span key={h} style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", fontWeight: 700, color: "rgba(255,255,255,0.25)", letterSpacing: "0.12em", textTransform: "uppercase" }}>{h}</span>
+                  ))}
+                </div>
+
+                {events.map((ev, i) => (
+                  <div
+                    key={ev.id}
+                    className="event-row"
+                    style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 80px 100px", gap: "0.5rem", padding: "1rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.04)", alignItems: "center" }}>
+
+                    {/* Title + Location */}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1rem", fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ev.title}</div>
+                      {ev.location && (
+                        <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.74rem", color: "rgba(255,255,255,0.3)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>📍 {ev.location}</div>
+                      )}
+                    </div>
+
+                    {/* Date */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                      <span style={{ color: "rgba(201,168,76,0.5)" }}><CalendarIcon /></span>
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.45)" }}>{formatDate(ev.event_date)}</span>
+                    </div>
+
+                    {/* Photos */}
+                    <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", fontWeight: 700, color: "#C9A84C" }}>
+                      {ev.total_photos ?? "—"}
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.65rem", color: "rgba(255,255,255,0.25)", marginLeft: 3, fontWeight: 400 }}>ph</span>
+                    </div>
+
+                    {/* Videos */}
+                    <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", fontWeight: 700, color: "rgba(201,168,76,0.6)" }}>
+                      {ev.total_videos ?? "—"}
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.65rem", color: "rgba(255,255,255,0.25)", marginLeft: 3, fontWeight: 400 }}>vid</span>
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: "flex", gap: "0.45rem" }}>
+                      <button
+                        onClick={() => setEditingEvent(ev)}
+                        title="Edit event"
+                        style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(201,168,76,0.07)", border: "1px solid rgba(201,168,76,0.2)", color: "#C9A84C", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.18)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.07)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.2)"; }}>
+                        <EditIcon />
+                      </button>
+                      <button
+                        onClick={() => setDeletingEvent(ev)}
+                        title="Delete event"
+                        style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.2)", color: "rgba(220,38,38,0.7)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.18)"; e.currentTarget.style.borderColor = "#dc2626"; e.currentTarget.style.color = "#fca5a5"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(220,38,38,0.07)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.2)"; e.currentTarget.style.color = "rgba(220,38,38,0.7)"; }}>
+                        <TrashIcon />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div style={{ padding: "1rem 2rem", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.75rem", color: "rgba(255,255,255,0.2)" }}>Changes take effect immediately across the gallery.</span>
+            <button onClick={onClose} style={{ padding: "0.55rem 1.25rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-modals rendered above the main modal */}
+      {showCreateForm && (
+        <EventFormModal
+          event={null}
+          onClose={() => setShowCreateForm(false)}
+          onSaved={handleSaved}
+          showToast={showToast}
+        />
+      )}
+      {editingEvent && (
+        <EventFormModal
+          event={editingEvent}
+          onClose={() => setEditingEvent(null)}
+          onSaved={handleSaved}
+          showToast={showToast}
+        />
+      )}
+      {deletingEvent && (
+        <DeleteEventModal
+          event={deletingEvent}
+          onClose={() => setDeletingEvent(null)}
+          onDeleted={handleDeleted}
+          showToast={showToast}
+        />
+      )}
+    </>
   );
 }
 
@@ -346,7 +831,6 @@ function UploadModal({ events, onClose, onUploaded, showToast }) {
           <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
         </div>
 
-        {/* Event selector */}
         <div style={{ marginBottom: "1rem" }}>
           <label style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.12em", textTransform: "uppercase", display: "block", marginBottom: "0.5rem" }}>Select Event</label>
           <select value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)} style={{ width: "100%", padding: "0.65rem 0.9rem", background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#fff", fontFamily: "'DM Sans', sans-serif", fontSize: "0.88rem", cursor: "pointer", outline: "none" }}>
@@ -356,7 +840,6 @@ function UploadModal({ events, onClose, onUploaded, showToast }) {
           </select>
         </div>
 
-        {/* File type */}
         <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
           {["photo", "video"].map(t => (
             <button key={t} onClick={() => setFileType(t)} style={{ flex: 1, padding: "0.55rem", borderRadius: 6, border: "1px solid", borderColor: fileType === t ? "#C9A84C" : "rgba(255,255,255,0.1)", background: fileType === t ? "rgba(201,168,76,0.1)" : "transparent", color: fileType === t ? "#C9A84C" : "rgba(255,255,255,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s" }}>
@@ -365,7 +848,6 @@ function UploadModal({ events, onClose, onUploaded, showToast }) {
           ))}
         </div>
 
-        {/* Drop zone */}
         <div
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -441,15 +923,12 @@ function Lightbox({ items, startIndex, onClose, onDelete, canDelete }) {
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.97)", backdropFilter: "blur(24px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease" }}>
-      {/* Close */}
       <button onClick={onClose} style={{ position: "absolute", top: 20, right: 20, width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", fontSize: "1.1rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10 }}>✕</button>
 
-      {/* Counter */}
       <div style={{ position: "absolute", top: 24, left: "50%", transform: "translateX(-50%)", fontFamily: "'Syne', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.35)", letterSpacing: "0.15em", zIndex: 10 }}>
         {current + 1} / {items.length}
       </div>
 
-      {/* Delete button */}
       {canDelete && (
         <button onClick={e => { e.stopPropagation(); handleDelete(); }} disabled={deleting} style={{ position: "absolute", top: 20, right: 80, height: 44, paddingInline: "1rem", borderRadius: 6, background: confirmDelete ? "rgba(220,38,38,0.3)" : "rgba(255,255,255,0.06)", border: `1px solid ${confirmDelete ? "#dc2626" : "rgba(255,255,255,0.12)"}`, color: confirmDelete ? "#fca5a5" : "rgba(255,255,255,0.45)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", zIndex: 10, transition: "all 0.2s" }}>
           {deleting ? <Spinner size={14} color="#fca5a5" /> : <TrashIcon />}
@@ -457,16 +936,13 @@ function Lightbox({ items, startIndex, onClose, onDelete, canDelete }) {
         </button>
       )}
 
-      {/* Prev */}
       <button onClick={e => { e.stopPropagation(); setCurrent(c => (c - 1 + items.length) % items.length); setConfirmDelete(false); }} style={{ position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)", width: 52, height: 52, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, transition: "all 0.25s" }}>
         <ChevronLeft />
       </button>
-      {/* Next */}
       <button onClick={e => { e.stopPropagation(); setCurrent(c => (c + 1) % items.length); setConfirmDelete(false); }} style={{ position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)", width: 52, height: 52, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, transition: "all 0.25s" }}>
         <ChevronRight />
       </button>
 
-      {/* Media */}
       <div onClick={e => e.stopPropagation()} style={{ position: "relative", maxWidth: "min(900px, 90vw)", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
         {isVideo ? (
           <video key={item.storage_path} src={item.storage_path} controls autoPlay style={{ maxWidth: "min(900px, 88vw)", maxHeight: "78vh", display: "block", borderRadius: 10, border: "1px solid rgba(201,168,76,0.15)" }} />
@@ -484,7 +960,6 @@ function Lightbox({ items, startIndex, onClose, onDelete, canDelete }) {
         </div>
       </div>
 
-      {/* Strip thumbnails */}
       <div style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", display: "flex", gap: "0.4rem", maxWidth: "min(700px, 90vw)", overflowX: "auto", padding: "0 0.5rem" }}>
         {items.map((it, i) => (
           <div key={it.id} onClick={e => { e.stopPropagation(); setCurrent(i); setConfirmDelete(false); }} style={{ width: 54, height: 38, borderRadius: 5, overflow: "hidden", flexShrink: 0, cursor: "pointer", border: `1.5px solid ${i === current ? "#C9A84C" : "rgba(255,255,255,0.1)"}`, opacity: i === current ? 1 : 0.45, transition: "all 0.2s" }}>
@@ -499,7 +974,7 @@ function Lightbox({ items, startIndex, onClose, onDelete, canDelete }) {
 }
 
 // ── Navbar ────────────────────────────────────────────────────────────────────
-function Navbar({ onUploadClick }) {
+function Navbar({ onUploadClick, onEventsClick }) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -535,6 +1010,16 @@ function Navbar({ onUploadClick }) {
                 onMouseEnter={e => e.target.style.color = "#C9A84C"}
                 onMouseLeave={e => e.target.style.color = l.href === "/gallery" ? "#C9A84C" : "rgba(255,255,255,0.75)"}>{l.label}</a>
             ))}
+
+            {/* ── NEW: Manage Events button ── */}
+            <button
+              onClick={onEventsClick}
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.1)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.color = "#C9A84C"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}>
+              <CalendarIcon /> Events
+            </button>
+
             <button onClick={onUploadClick} style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.18)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
               onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.08)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)"; }}>
@@ -557,10 +1042,14 @@ function Navbar({ onUploadClick }) {
         {links.map(l => (
           <a key={l.label} href={l.href} onClick={() => setMenuOpen(false)} style={{ display: "block", fontFamily: "'Syne', sans-serif", fontSize: "1.1rem", fontWeight: 600, color: l.href === "/gallery" ? "#C9A84C" : "rgba(255,255,255,0.75)", textDecoration: "none", padding: "0.9rem 0", borderBottom: "1px solid rgba(255,255,255,0.05)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{l.label}</a>
         ))}
-        <button onClick={() => { setMenuOpen(false); onUploadClick(); }} style={{ display: "block", width: "100%", marginTop: "1rem", padding: "0.75rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+        {/* ── NEW: mobile Events button ── */}
+        <button onClick={() => { setMenuOpen(false); onEventsClick(); }} style={{ display: "block", width: "100%", marginTop: "1rem", padding: "0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          Manage Events
+        </button>
+        <button onClick={() => { setMenuOpen(false); onUploadClick(); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.75rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
           Upload Media
         </button>
-        <a href="/#contact" onClick={() => setMenuOpen(false)} style={{ display: "block", marginTop: "0.75rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", textDecoration: "none", textAlign: "center", letterSpacing: "0.08em", textTransform: "uppercase" }}>Contact Us</a>
+        <a href="/#contact" onClick={() => setMenuOpen(false)} style={{ display: "block", marginTop: "0.6rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", textDecoration: "none", textAlign: "center", letterSpacing: "0.08em", textTransform: "uppercase" }}>Contact Us</a>
       </div>
       {menuOpen && <div onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 480, background: "rgba(0,0,0,0.5)" }} />}
     </>
@@ -661,18 +1150,15 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [layout, setLayout] = useState("masonry");
 
-  // Build label filters from events
   const labelSet = new Set(events.map(e => guessLabel(e)));
   const FILTERS = ["All", ...Array.from(labelSet)];
 
-  // Filtered media
   const filtered = allMedia.filter(item => {
     const matchLabel = activeFilter === "All" || guessLabel({ title: item.event_title }) === activeFilter;
     const matchEvent = activeEventId === "all" || item.event_id === activeEventId;
     return matchLabel && matchEvent;
   });
 
-  // Group by event for featured layout
   const byEvent = filtered.reduce((acc, item) => {
     const key = item.event_id;
     if (!acc[key]) acc[key] = { name: item.event_title, items: [] };
@@ -713,7 +1199,6 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
     <section ref={ref} style={{ padding: "3rem 1.5rem 6rem", background: "#0d0d1a", minHeight: "60vh" }}>
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
 
-        {/* Controls */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "2.5rem", flexWrap: "wrap", gap: "1.25rem", opacity: visible ? 1 : 0, transition: "all 0.6s" }}>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
             {FILTERS.map(f => (
@@ -742,7 +1227,6 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
               onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}>
               <RefreshIcon />
             </button>
-            {/* Layout toggles */}
             {[
               { key: "masonry", icon: "⊞", label: "Masonry" },
               { key: "grid",    icon: "▦", label: "Grid" },
@@ -755,10 +1239,8 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
           </div>
         </div>
 
-        {/* Loading skeleton */}
         {loading && <SkeletonGrid count={9} />}
 
-        {/* Empty state */}
         {!loading && filtered.length === 0 && (
           <div style={{ textAlign: "center", padding: "5rem 0" }}>
             <div style={{ fontSize: "3rem", marginBottom: "1rem", opacity: 0.5 }}>📷</div>
@@ -769,7 +1251,6 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
           </div>
         )}
 
-        {/* Masonry */}
         {!loading && layout === "masonry" && filtered.length > 0 && (
           <div style={{ columns: "3 280px", gap: "1rem" }}>
             {filtered.map((item, i) => (
@@ -778,7 +1259,6 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
           </div>
         )}
 
-        {/* Grid */}
         {!loading && layout === "grid" && filtered.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "1rem" }}>
             {filtered.map((item, i) => (
@@ -787,7 +1267,6 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
           </div>
         )}
 
-        {/* Featured */}
         {!loading && layout === "featured" && filtered.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "4rem" }}>
             {Object.entries(byEvent).map(([eventId, group]) => (
@@ -946,6 +1425,7 @@ export default function GalleryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [showEventsManager, setShowEventsManager] = useState(false); // ← NEW
   const [toast, setToast] = useState(null);
 
   const showToast = useCallback((message, type = "success") => {
@@ -956,12 +1436,10 @@ export default function GalleryPage() {
     setLoading(true);
     setError(null);
     try {
-      // 1. Fetch all events
       const eventsData = await api.getEvents();
       const eventList = eventsData.events || [];
       setEvents(eventList);
 
-      // 2. For each event, fetch its media in parallel
       const mediaResults = await Promise.allSettled(
         eventList.map(ev => api.getEventMedia(ev.id))
       );
@@ -973,7 +1451,6 @@ export default function GalleryPage() {
       mediaResults.forEach((result, i) => {
         if (result.status === "fulfilled") {
           const files = result.value.media_files || [];
-          // Attach event title to each media item for display
           const enriched = files.map(f => ({
             ...f,
             event_title: eventList[i].title,
@@ -984,7 +1461,6 @@ export default function GalleryPage() {
         }
       });
 
-      // Sort newest first
       combinedMedia.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
       setAllMedia(combinedMedia);
@@ -1023,7 +1499,11 @@ export default function GalleryPage() {
     });
   }, []);
 
-  // Hero images: first 4 photos from all media
+  // Reload events list + gallery whenever events change via the manager
+  const handleEventsChanged = useCallback(() => {
+    loadGallery();
+  }, [loadGallery]);
+
   const heroImages = allMedia
     .filter(m => m.file_type === "photo" && m.storage_path)
     .slice(0, 4)
@@ -1032,7 +1512,10 @@ export default function GalleryPage() {
   return (
     <>
       <style>{GLOBAL_CSS}</style>
-      <Navbar onUploadClick={() => setShowUpload(true)} />
+      <Navbar
+        onUploadClick={() => setShowUpload(true)}
+        onEventsClick={() => setShowEventsManager(true)}  // ← NEW prop
+      />
       <PageHero heroImages={heroImages} />
       <TickerBanner events={events} />
       <StatsBar
@@ -1054,6 +1537,15 @@ export default function GalleryPage() {
       <SocialCTA />
       <Footer />
 
+      {/* ── Events Manager Modal ── */}
+      {showEventsManager && (
+        <EventsManagerModal
+          onClose={() => setShowEventsManager(false)}
+          showToast={showToast}
+          onEventsChanged={handleEventsChanged}
+        />
+      )}
+
       {showUpload && events.length > 0 && (
         <UploadModal
           events={events}
@@ -1069,11 +1561,16 @@ export default function GalleryPage() {
             <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>📭</div>
             <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.5rem", color: "#fff", marginBottom: "0.75rem" }}>No Events Yet</h3>
             <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "0.88rem", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-              You need at least one event before uploading media. Please create an event via the backend first.
+              You need at least one event before uploading media. Create one using the <strong style={{ color: "#C9A84C" }}>Events</strong> button in the nav.
             </p>
-            <button onClick={() => setShowUpload(false)} style={{ padding: "0.7rem 1.5rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Got it
-            </button>
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
+              <button onClick={() => { setShowUpload(false); setShowEventsManager(true); }} style={{ padding: "0.7rem 1.4rem", background: "transparent", border: "1px solid rgba(201,168,76,0.4)", color: "#C9A84C", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Create Event
+              </button>
+              <button onClick={() => setShowUpload(false)} style={{ padding: "0.7rem 1.5rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Got it
+              </button>
+            </div>
           </div>
         </div>
       )}
