@@ -111,8 +111,34 @@ const GLOBAL_CSS = `
   }
 `;
 
-// ── API Layer ─────────────────────────────────────────────────────────────────
+// ── API Layer (with auth token support) ───────────────────────────────────────
 const api = {
+  // Auth endpoints
+  async signup(username, email, password) {
+    const res = await fetch(`${BASE_URL}/api/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, email, password }),
+    });
+    if (!res.ok) throw new Error(`Signup failed: ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 201) throw new Error(json.message || "Signup failed");
+    return json.data;
+  },
+
+  async login(username, email, password) {
+    const res = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, email, password }),
+    });
+    if (!res.ok) throw new Error(`Login failed: ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.message || "Login failed");
+    return { token: json.token, user: { username: json.username, email, role: "admin" } };
+  },
+
+  // Events
   async getEvents(page = 1, limit = 50) {
     const res = await fetch(`${BASE_URL}/api/events?page=${page}&limit=${limit}`);
     if (!res.ok) throw new Error(`Events fetch failed: ${res.status}`);
@@ -129,10 +155,13 @@ const api = {
     return json.data;
   },
 
-  async createEvent(payload) {
+  async createEvent(payload, token) {
     const res = await fetch(`${BASE_URL}/api/events`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(`Create event failed: ${res.status}`);
@@ -141,10 +170,13 @@ const api = {
     return json.data;
   },
 
-  async updateEvent(eventId, payload) {
+  async updateEvent(eventId, payload, token) {
     const res = await fetch(`${BASE_URL}/api/events/${eventId}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(`Update event failed: ${res.status}`);
@@ -153,8 +185,11 @@ const api = {
     return json.data;
   },
 
-  async deleteEvent(eventId) {
-    const res = await fetch(`${BASE_URL}/api/events/${eventId}`, { method: "DELETE" });
+  async deleteEvent(eventId, token) {
+    const res = await fetch(`${BASE_URL}/api/events/${eventId}`, {
+      method: "DELETE",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     if (!res.ok) throw new Error(`Delete event failed: ${res.status}`);
     const json = await res.json();
     if (json.status !== "success") throw new Error(json.message || "Delete failed");
@@ -179,12 +214,13 @@ const api = {
     return json.data;
   },
 
-  async uploadMedia(eventId, file, fileType) {
+  async uploadMedia(eventId, file, fileType, token) {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("file_type", fileType);
     const res = await fetch(`${BASE_URL}/api/events/${eventId}/media/upload`, {
       method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
     });
     if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
@@ -193,8 +229,11 @@ const api = {
     return json.data;
   },
 
-  async deleteMedia(mediaId) {
-    const res = await fetch(`${BASE_URL}/api/media/${mediaId}`, { method: "DELETE" });
+  async deleteMedia(mediaId, token) {
+    const res = await fetch(`${BASE_URL}/api/media/${mediaId}`, {
+      method: "DELETE",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
     return res.json();
   },
@@ -306,6 +345,11 @@ const TwitterIcon = ({ size = 16 }) => (
     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
   </svg>
 );
+const LogoutIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+  </svg>
+);
 
 // ── Spinner ───────────────────────────────────────────────────────────────────
 function Spinner({ size = 24, color = "#C9A84C" }) {
@@ -367,8 +411,139 @@ const inputStyle = {
   transition: "border-color 0.2s",
 };
 
+// ── Auth Modal (Login / Signup) ───────────────────────────────────────────────
+function AuthModal({ onClose, onSuccess, showToast }) {
+  const [mode, setMode] = useState("login"); // "login" or "signup"
+  const [form, setForm] = useState({ username: "", email: "", password: "" });
+  const [loading, setLoading] = useState(false);
+  const [fieldFocus, setFieldFocus] = useState(null);
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const { username, email, password } = form;
+    if (!username.trim() || !email.trim() || !password.trim()) {
+      showToast("All fields are required", "error");
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      showToast("Please enter a valid email", "error");
+      return;
+    }
+    setLoading(true);
+    try {
+      if (mode === "signup") {
+        await api.signup(username, email, password);
+        showToast("Account created! Please log in.", "success");
+        setMode("login");
+        // Pre-fill login form (except password)
+        setForm(f => ({ ...f, password: "" }));
+      } else {
+        const { token, user } = await api.login(username, email, password);
+        showToast(`Welcome, ${user.username}!`, "success");
+        onSuccess({ token, user });
+        onClose();
+      }
+    } catch (err) {
+      showToast(err.message || (mode === "login" ? "Login failed" : "Signup failed"), "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const dynBorder = (field) => ({
+    ...inputStyle,
+    borderColor: fieldFocus === field ? "rgba(201,168,76,0.6)" : "rgba(255,255,255,0.12)",
+  });
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2500, background: "rgba(5,5,15,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.25)", borderRadius: 16, padding: "2.2rem", width: "100%", maxWidth: 460, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.8rem" }}>
+          <div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.3rem" }}>
+              Admin Access
+            </div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.8rem", fontWeight: 700, color: "#fff" }}>
+              {mode === "login" ? "Sign In" : "Create Account"}
+            </h3>
+          </div>
+          <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <FormField label="Username" required>
+            <input
+              value={form.username}
+              onChange={set("username")}
+              onFocus={() => setFieldFocus("username")}
+              onBlur={() => setFieldFocus(null)}
+              placeholder="Your username"
+              style={dynBorder("username")}
+              autoComplete="username"
+            />
+          </FormField>
+
+          <FormField label="Email" required>
+            <input
+              type="email"
+              value={form.email}
+              onChange={set("email")}
+              onFocus={() => setFieldFocus("email")}
+              onBlur={() => setFieldFocus(null)}
+              placeholder="you@example.com"
+              style={dynBorder("email")}
+              autoComplete="email"
+            />
+          </FormField>
+
+          <FormField label="Password" required>
+            <input
+              type="password"
+              value={form.password}
+              onChange={set("password")}
+              onFocus={() => setFieldFocus("password")}
+              onBlur={() => setFieldFocus(null)}
+              placeholder="••••••••"
+              style={dynBorder("password")}
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+            />
+          </FormField>
+
+          <div style={{ marginTop: "1.8rem" }}>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{ width: "100%", padding: "0.9rem", borderRadius: 6, background: loading ? "rgba(201,168,76,0.2)" : "linear-gradient(135deg,#C9A84C,#b8962e)", color: loading ? "rgba(201,168,76,0.4)" : "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", cursor: loading ? "not-allowed" : "pointer", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+              {loading ? <Spinner size={16} color="#C9A84C" /> : (mode === "login" ? "Sign In" : "Sign Up")}
+            </button>
+          </div>
+
+          <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
+            <button
+              type="button"
+              onClick={() => setMode(m => m === "login" ? "signup" : "login")}
+              style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 4, textDecorationColor: "#C9A84C", transition: "color 0.2s" }}
+              onMouseEnter={e => e.currentTarget.style.color = "#C9A84C"}
+              onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.4)"}
+            >
+              {mode === "login" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Event Form Modal (Create / Edit) ──────────────────────────────────────────
-function EventFormModal({ event, onClose, onSaved, showToast }) {
+function EventFormModal({ event, onClose, onSaved, showToast, token }) {
   const isEdit = !!event;
   const [form, setForm] = useState({
     title: event?.title || "",
@@ -394,10 +569,10 @@ function EventFormModal({ event, onClose, onSaved, showToast }) {
     try {
       let result;
       if (isEdit) {
-        result = await api.updateEvent(event.id, form);
+        result = await api.updateEvent(event.id, form, token);
         showToast("Event updated successfully!", "success");
       } else {
-        result = await api.createEvent(form);
+        result = await api.createEvent(form, token);
         showToast("Event created successfully!", "success");
       }
       onSaved(result, isEdit);
@@ -417,7 +592,6 @@ function EventFormModal({ event, onClose, onSaved, showToast }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2100, background: "rgba(5,5,15,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, padding: "2rem", width: "100%", maxWidth: 540, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", maxHeight: "90vh", overflowY: "auto" }}>
-
         {/* Header */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.75rem" }}>
           <div>
@@ -508,7 +682,7 @@ function EventFormModal({ event, onClose, onSaved, showToast }) {
 }
 
 // ── Delete Confirm Modal ──────────────────────────────────────────────────────
-function DeleteEventModal({ event, onClose, onDeleted, showToast }) {
+function DeleteEventModal({ event, onClose, onDeleted, showToast, token }) {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -519,7 +693,7 @@ function DeleteEventModal({ event, onClose, onDeleted, showToast }) {
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      await api.deleteEvent(event.id);
+      await api.deleteEvent(event.id, token);
       showToast("Event deleted successfully", "success");
       onDeleted(event.id);
       onClose();
@@ -558,7 +732,7 @@ function DeleteEventModal({ event, onClose, onDeleted, showToast }) {
 }
 
 // ── Events Manager Modal ──────────────────────────────────────────────────────
-function EventsManagerModal({ onClose, showToast, onEventsChanged }) {
+function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -637,16 +811,12 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged }) {
 
           {/* Body */}
           <div style={{ overflowY: "auto", flex: 1, padding: "0.5rem 0" }}>
-
-            {/* Loading */}
             {loading && (
               <div style={{ padding: "3rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem" }}>
                 <Spinner size={32} />
                 <span style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.3)", fontSize: "0.85rem" }}>Loading events...</span>
               </div>
             )}
-
-            {/* Error */}
             {!loading && error && (
               <div style={{ padding: "2.5rem", textAlign: "center" }}>
                 <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>⚠️</div>
@@ -656,8 +826,6 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged }) {
                 </button>
               </div>
             )}
-
-            {/* Empty */}
             {!loading && !error && events.length === 0 && (
               <div style={{ padding: "3rem", textAlign: "center" }}>
                 <div style={{ fontSize: "2.5rem", marginBottom: "1rem", opacity: 0.5 }}>📭</div>
@@ -668,50 +836,36 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged }) {
                 </button>
               </div>
             )}
-
-            {/* Events List */}
             {!loading && !error && events.length > 0 && (
               <div>
-                {/* Column headers */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 80px 100px", gap: "0.5rem", padding: "0.5rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                   {["Event", "Date", "Photos", "Videos", "Actions"].map(h => (
                     <span key={h} style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", fontWeight: 700, color: "rgba(255,255,255,0.25)", letterSpacing: "0.12em", textTransform: "uppercase" }}>{h}</span>
                   ))}
                 </div>
-
                 {events.map((ev, i) => (
                   <div
                     key={ev.id}
                     className="event-row"
                     style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 80px 100px", gap: "0.5rem", padding: "1rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.04)", alignItems: "center" }}>
-
-                    {/* Title + Location */}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1rem", fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ev.title}</div>
                       {ev.location && (
                         <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.74rem", color: "rgba(255,255,255,0.3)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>📍 {ev.location}</div>
                       )}
                     </div>
-
-                    {/* Date */}
                     <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
                       <span style={{ color: "rgba(201,168,76,0.5)" }}><CalendarIcon /></span>
                       <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.45)" }}>{formatDate(ev.event_date)}</span>
                     </div>
-
-                    {/* Photos */}
                     <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", fontWeight: 700, color: "#C9A84C" }}>
                       {ev.total_photos ?? "—"}
                       <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.65rem", color: "rgba(255,255,255,0.25)", marginLeft: 3, fontWeight: 400 }}>ph</span>
                     </div>
-
-                    {/* Videos */}
                     <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", fontWeight: 700, color: "rgba(201,168,76,0.6)" }}>
                       {ev.total_videos ?? "—"}
                       <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.65rem", color: "rgba(255,255,255,0.25)", marginLeft: 3, fontWeight: 400 }}>vid</span>
                     </div>
-
-                    {/* Actions */}
                     <div style={{ display: "flex", gap: "0.45rem" }}>
                       <button
                         onClick={() => setEditingEvent(ev)}
@@ -736,7 +890,6 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged }) {
             )}
           </div>
 
-          {/* Footer */}
           <div style={{ padding: "1rem 2rem", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.75rem", color: "rgba(255,255,255,0.2)" }}>Changes take effect immediately across the gallery.</span>
             <button onClick={onClose} style={{ padding: "0.55rem 1.25rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
@@ -746,13 +899,13 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged }) {
         </div>
       </div>
 
-      {/* Sub-modals rendered above the main modal */}
       {showCreateForm && (
         <EventFormModal
           event={null}
           onClose={() => setShowCreateForm(false)}
           onSaved={handleSaved}
           showToast={showToast}
+          token={token}
         />
       )}
       {editingEvent && (
@@ -761,6 +914,7 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged }) {
           onClose={() => setEditingEvent(null)}
           onSaved={handleSaved}
           showToast={showToast}
+          token={token}
         />
       )}
       {deletingEvent && (
@@ -769,6 +923,7 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged }) {
           onClose={() => setDeletingEvent(null)}
           onDeleted={handleDeleted}
           showToast={showToast}
+          token={token}
         />
       )}
     </>
@@ -776,7 +931,7 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged }) {
 }
 
 // ── Upload Modal ──────────────────────────────────────────────────────────────
-function UploadModal({ events, onClose, onUploaded, showToast }) {
+function UploadModal({ events, onClose, onUploaded, showToast, token }) {
   const [selectedEventId, setSelectedEventId] = useState(events[0]?.id || "");
   const [fileType, setFileType] = useState("photo");
   const [file, setFile] = useState(null);
@@ -804,7 +959,7 @@ function UploadModal({ events, onClose, onUploaded, showToast }) {
     if (!file || !selectedEventId) return;
     setUploading(true);
     try {
-      const result = await api.uploadMedia(selectedEventId, file, fileType);
+      const result = await api.uploadMedia(selectedEventId, file, fileType, token);
       showToast("Media uploaded successfully!", "success");
       onUploaded(selectedEventId, result);
       onClose();
@@ -892,7 +1047,7 @@ function UploadModal({ events, onClose, onUploaded, showToast }) {
 }
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
-function Lightbox({ items, startIndex, onClose, onDelete, canDelete }) {
+function Lightbox({ items, startIndex, onClose, onDelete, canDelete, token }) {
   const [current, setCurrent] = useState(startIndex);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -914,7 +1069,7 @@ function Lightbox({ items, startIndex, onClose, onDelete, canDelete }) {
   const handleDelete = async () => {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     setDeleting(true);
-    await onDelete(item.id, current);
+    await onDelete(item.id, current, token);
     setDeleting(false);
     setConfirmDelete(false);
     if (items.length <= 1) { onClose(); return; }
@@ -974,7 +1129,7 @@ function Lightbox({ items, startIndex, onClose, onDelete, canDelete }) {
 }
 
 // ── Navbar ────────────────────────────────────────────────────────────────────
-function Navbar({ onUploadClick, onEventsClick }) {
+function Navbar({ onUploadClick, onEventsClick, isAuthenticated, user, onLogout, onLoginClick }) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -992,6 +1147,22 @@ function Navbar({ onUploadClick, onEventsClick }) {
     { label: "Gallery", href: "/gallery" },
     { label: "Results", href: "/results" },
   ];
+
+  const handleUpload = () => {
+    if (!isAuthenticated) {
+      onLoginClick("upload");
+    } else {
+      onUploadClick();
+    }
+  };
+
+  const handleEvents = () => {
+    if (!isAuthenticated) {
+      onLoginClick("events");
+    } else {
+      onEventsClick();
+    }
+  };
 
   return (
     <>
@@ -1011,20 +1182,52 @@ function Navbar({ onUploadClick, onEventsClick }) {
                 onMouseLeave={e => e.target.style.color = l.href === "/gallery" ? "#C9A84C" : "rgba(255,255,255,0.75)"}>{l.label}</a>
             ))}
 
-            {/* ── NEW: Manage Events button ── */}
-            <button
-              onClick={onEventsClick}
-              style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.1)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.color = "#C9A84C"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}>
-              <CalendarIcon /> Events
-            </button>
-
-            <button onClick={onUploadClick} style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.18)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.08)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)"; }}>
-              <UploadIcon /> Upload
-            </button>
+            {isAuthenticated ? (
+              <>
+                <button
+                  onClick={handleEvents}
+                  style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.1)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.color = "#C9A84C"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}>
+                  <CalendarIcon /> Events
+                </button>
+                <button onClick={handleUpload} style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.18)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.08)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)"; }}>
+                  <UploadIcon /> Upload
+                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", color: "rgba(255,255,255,0.6)" }}>{user?.username}</span>
+                  <button onClick={onLogout} title="Logout" style={{ width: 36, height: 36, borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.1)"; e.currentTarget.style.borderColor = "#dc2626"; e.currentTarget.style.color = "#fca5a5"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "rgba(255,255,255,0.5)"; }}>
+                    <LogoutIcon />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => onLoginClick("events")}
+                  style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.1)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.color = "#C9A84C"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}>
+                  <CalendarIcon /> Events
+                </button>
+                <button
+                  onClick={() => onLoginClick("upload")}
+                  style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.18)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.08)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)"; }}>
+                  <UploadIcon /> Upload
+                </button>
+                <button
+                  onClick={() => onLoginClick("login")}
+                  style={{ background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.6rem 1.4rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.76rem", border: "none", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 4px 16px rgba(201,168,76,0.3)" }}>
+                  Admin Login
+                </button>
+              </>
+            )}
             <a href="/#contact" style={{ background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.6rem 1.4rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.76rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 4px 16px rgba(201,168,76,0.3)" }}>
               Contact
             </a>
@@ -1042,13 +1245,32 @@ function Navbar({ onUploadClick, onEventsClick }) {
         {links.map(l => (
           <a key={l.label} href={l.href} onClick={() => setMenuOpen(false)} style={{ display: "block", fontFamily: "'Syne', sans-serif", fontSize: "1.1rem", fontWeight: 600, color: l.href === "/gallery" ? "#C9A84C" : "rgba(255,255,255,0.75)", textDecoration: "none", padding: "0.9rem 0", borderBottom: "1px solid rgba(255,255,255,0.05)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{l.label}</a>
         ))}
-        {/* ── NEW: mobile Events button ── */}
-        <button onClick={() => { setMenuOpen(false); onEventsClick(); }} style={{ display: "block", width: "100%", marginTop: "1rem", padding: "0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          Manage Events
-        </button>
-        <button onClick={() => { setMenuOpen(false); onUploadClick(); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.75rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          Upload Media
-        </button>
+        {isAuthenticated ? (
+          <>
+            <button onClick={() => { setMenuOpen(false); onEventsClick(); }} style={{ display: "block", width: "100%", marginTop: "1rem", padding: "0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Manage Events
+            </button>
+            <button onClick={() => { setMenuOpen(false); onUploadClick(); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.75rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Upload Media
+            </button>
+            <div style={{ marginTop: "1rem", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5rem 0" }}>
+              <span style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.6)" }}>{user?.username}</span>
+              <button onClick={() => { setMenuOpen(false); onLogout(); }} style={{ background: "none", border: "1px solid rgba(220,38,38,0.3)", color: "#fca5a5", padding: "0.3rem 0.8rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", cursor: "pointer" }}>Logout</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <button onClick={() => { setMenuOpen(false); onLoginClick("events"); }} style={{ display: "block", width: "100%", marginTop: "1rem", padding: "0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Manage Events
+            </button>
+            <button onClick={() => { setMenuOpen(false); onLoginClick("upload"); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.75rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Upload Media
+            </button>
+            <button onClick={() => { setMenuOpen(false); onLoginClick("login"); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", border: "none", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Admin Login
+            </button>
+          </>
+        )}
         <a href="/#contact" onClick={() => setMenuOpen(false)} style={{ display: "block", marginTop: "0.6rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", textDecoration: "none", textAlign: "center", letterSpacing: "0.08em", textTransform: "uppercase" }}>Contact Us</a>
       </div>
       {menuOpen && <div onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 480, background: "rgba(0,0,0,0.5)" }} />}
@@ -1143,7 +1365,7 @@ function StatsBar({ totalPhotos, totalVideos, totalEvents, showing, loading }) {
 }
 
 // ── Gallery Grid ──────────────────────────────────────────────────────────────
-function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, showToast }) {
+function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, showToast, isAuthenticated, token }) {
   const [ref, visible] = useInView();
   const [activeFilter, setActiveFilter] = useState("All");
   const [activeEventId, setActiveEventId] = useState("all");
@@ -1171,9 +1393,9 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
     if (idx >= 0) setLightboxIndex(idx);
   };
 
-  const handleDelete = async (mediaId, currentIdx) => {
+  const handleDelete = async (mediaId, currentIdx, authToken) => {
     try {
-      await api.deleteMedia(mediaId);
+      await api.deleteMedia(mediaId, authToken);
       showToast("Media deleted", "success");
       onDelete(mediaId);
       if (filtered.length <= 1) setLightboxIndex(null);
@@ -1282,7 +1504,8 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
           startIndex={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onDelete={handleDelete}
-          canDelete={true}
+          canDelete={isAuthenticated}
+          token={token}
         />
       )}
     </section>
@@ -1425,8 +1648,14 @@ export default function GalleryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
-  const [showEventsManager, setShowEventsManager] = useState(false); // ← NEW
+  const [showEventsManager, setShowEventsManager] = useState(false);
   const [toast, setToast] = useState(null);
+
+  // Auth state
+  const [authToken, setAuthToken] = useState(null);
+  const [authUser, setAuthUser] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null); // 'upload', 'events', 'login'
 
   const showToast = useCallback((message, type = "success") => {
     setToast({ message, type, id: Date.now() });
@@ -1499,10 +1728,35 @@ export default function GalleryPage() {
     });
   }, []);
 
-  // Reload events list + gallery whenever events change via the manager
   const handleEventsChanged = useCallback(() => {
     loadGallery();
   }, [loadGallery]);
+
+  const handleLoginSuccess = ({ token, user }) => {
+    setAuthToken(token);
+    setAuthUser(user);
+    setShowAuthModal(false);
+    // Execute pending action
+    if (pendingAction === "upload") {
+      setShowUpload(true);
+    } else if (pendingAction === "events") {
+      setShowEventsManager(true);
+    }
+    setPendingAction(null);
+  };
+
+  const handleLogout = () => {
+    setAuthToken(null);
+    setAuthUser(null);
+    setShowUpload(false);
+    setShowEventsManager(false);
+    showToast("Logged out successfully", "success");
+  };
+
+  const openAuth = (action) => {
+    setPendingAction(action);
+    setShowAuthModal(true);
+  };
 
   const heroImages = allMedia
     .filter(m => m.file_type === "photo" && m.storage_path)
@@ -1514,7 +1768,11 @@ export default function GalleryPage() {
       <style>{GLOBAL_CSS}</style>
       <Navbar
         onUploadClick={() => setShowUpload(true)}
-        onEventsClick={() => setShowEventsManager(true)}  // ← NEW prop
+        onEventsClick={() => setShowEventsManager(true)}
+        isAuthenticated={!!authToken}
+        user={authUser}
+        onLogout={handleLogout}
+        onLoginClick={openAuth}
       />
       <PageHero heroImages={heroImages} />
       <TickerBanner events={events} />
@@ -1533,29 +1791,40 @@ export default function GalleryPage() {
         onRefresh={loadGallery}
         onDelete={handleDelete}
         showToast={showToast}
+        isAuthenticated={!!authToken}
+        token={authToken}
       />
       <SocialCTA />
       <Footer />
 
-      {/* ── Events Manager Modal ── */}
-      {showEventsManager && (
+      {showAuthModal && (
+        <AuthModal
+          onClose={() => { setShowAuthModal(false); setPendingAction(null); }}
+          onSuccess={handleLoginSuccess}
+          showToast={showToast}
+        />
+      )}
+
+      {showEventsManager && authToken && (
         <EventsManagerModal
           onClose={() => setShowEventsManager(false)}
           showToast={showToast}
           onEventsChanged={handleEventsChanged}
+          token={authToken}
         />
       )}
 
-      {showUpload && events.length > 0 && (
+      {showUpload && authToken && events.length > 0 && (
         <UploadModal
           events={events}
           onClose={() => setShowUpload(false)}
           onUploaded={handleUploaded}
           showToast={showToast}
+          token={authToken}
         />
       )}
 
-      {showUpload && events.length === 0 && (
+      {showUpload && authToken && events.length === 0 && (
         <div onClick={() => setShowUpload(false)} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, padding: "2rem", maxWidth: 400, textAlign: "center", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
             <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>📭</div>
