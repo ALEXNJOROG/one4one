@@ -1202,7 +1202,7 @@ export default function ResultsPage() {
       mediaResults.forEach((result, i) => {
         const eventId = eventList[i].id;
         if (result.status === "fulfilled") {
-          const files = result.value.media_files || [];
+          const files = result.value.media_files || result.value.results || [];
           // Filter for PDFs (by extension or mime hint in filename)
           const pdfs = files.filter(f =>
             (f.original_filename || f.storage_path || "").toLowerCase().endsWith(".pdf") ||

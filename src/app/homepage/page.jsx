@@ -329,21 +329,10 @@ function Navbar() {
         <div style={{ maxWidth: 1320, margin: "0 auto", padding: "0 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", height: 78 }}>
           {/* Logo */}
           <a href="#home" style={{ display: "flex", alignItems: "center", gap: "0.75rem", textDecoration: "none" }}>
-            <img
-  src="/media/logo2.png"
-  alt="ONE4ONE"
-  style={{
-    width: 52,
-    height: 52,
-    objectFit: "contain",
-    display: "block",
-    filter: "drop-shadow(0 0 0 transparent)" // helps with PNG blending
-  }}
-  onError={e => {
-    e.target.style.display = "none";
-    e.target.insertAdjacentHTML('afterend', '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:1.1rem;color:#C9A84C;letter-spacing:0.05em">1·4·1</span>');
-  }}
-/>
+            <div style={{ width: 76, height: 76, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+              <img src="/media/logo2.png" alt="ONE4ONE" style={{ width: "100%", height: "100%", objectFit: "contain", transform: "scale(1.9)", transformOrigin: "center" }}
+                onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:1.1rem;color:#C9A84C;letter-spacing:0.05em">1·4·1</span>'; }} />
+            </div>
           </a>
 
           {/* Desktop Nav */}
