@@ -380,8 +380,17 @@ function Navbar() {
   );
 }
 
-// ── Hero Slideshow ────────────────────────────────────────────────────────────
-const SLIDES = [
+// ── Hero Slideshow (Dynamic — fetches events + photos from DB) ────────────────
+// Builds slides from:
+//   1. Upcoming events   → "Registration Open" slides
+//   2. Past events       → "Completed" slides
+//   3. Gallery photos    → "Highlights" slides (fills remaining slots, max 2)
+// Falls back to hardcoded FALLBACK_SLIDES if API returns nothing.
+// Everything else (layout, animations, stats, arrows, dots) is unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Hardcoded fallback (your original slides — used only if API is empty) ─────
+const FALLBACK_SLIDES = [
   {
     type: "upcoming",
     label: "UPCOMING EVENT",
@@ -436,38 +445,201 @@ const SLIDES = [
   },
 ];
 
-function HeroSlideshow({ onImageClick }) {
-  const [current, setCurrent] = useState(0);
-  const [prev, setPrev] = useState(null);
-  const [direction, setDirection] = useState(1);
-  const [loaded, setLoaded] = useState(false);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const intervalRef = useRef(null);
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function heroFormatDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+}
 
-  useEffect(() => { setTimeout(() => setLoaded(true), 200); }, []);
+function heroTitleCase(str = "") {
+  // Break long event titles into two lines at a natural word boundary
+  const words = str.trim().split(" ");
+  if (words.length <= 2) return str;
+  const mid = Math.ceil(words.length / 2);
+  return words.slice(0, mid).join(" ") + "\n" + words.slice(mid).join(" ");
+}
+
+function heroSubtitle(event) {
+  const parts = [];
+  if (event.distance) parts.push(event.distance);
+  if (event.location) parts.push(event.location);
+  return parts.join(" · ") || "ONE4ONE Event";
+}
+
+// ── Build dynamic slides from API data ───────────────────────────────────────
+function buildSlides(events, photos) {
+  const now = new Date();
+  const slides = [];
+
+  const upcoming = events.filter(e => e.event_date && new Date(e.event_date) >= now);
+  const past     = events.filter(e => !e.event_date || new Date(e.event_date) < now);
+
+  // 1. Upcoming events
+  upcoming.forEach(ev => {
+    slides.push({
+      type: "upcoming",
+      label: "UPCOMING EVENT",
+      title: heroTitleCase(ev.title),
+      subtitle: heroSubtitle(ev),
+      date: heroFormatDate(ev.event_date),
+      tag: "Registration Open",
+      tagColor: "#C9A84C",
+      img: ev.cover_image || "",
+      cta: { text: "Register Now", href: "#contact" },
+      accentColor: "#C9A84C",
+      overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.75) 0%, rgba(13,13,26,0.3) 60%, rgba(201,168,76,0.1) 100%)",
+    });
+  });
+
+  // 2. Past events (most recent first, max 2)
+  past.slice(0, 2).forEach(ev => {
+    slides.push({
+      type: "past",
+      label: `PAST EVENT · ${heroFormatDate(ev.event_date)}`,
+      title: heroTitleCase(ev.title),
+      subtitle: heroSubtitle(ev),
+      date: heroFormatDate(ev.event_date),
+      tag: "Completed",
+      tagColor: "#22c55e",
+      img: ev.cover_image || "",
+      cta: { text: "View Gallery", href: "#gallery" },
+      accentColor: "#4ade80",
+      overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.8) 0%, rgba(13,13,26,0.35) 60%, rgba(74,222,128,0.08) 100%)",
+    });
+  });
+
+  // 3. Fill remaining slots with gallery highlight photos (max 2)
+  const photoSlots = Math.max(0, 4 - slides.length);
+  // Pick photos from different events for variety
+  const picked = [];
+  const seen = new Set();
+  for (const p of photos) {
+    if (picked.length >= photoSlots) break;
+    if (!seen.has(p.event_id)) {
+      seen.add(p.event_id);
+      picked.push(p);
+    }
+  }
+
+  const highlightColors = ["#a78bfa", "#60a5fa", "#f472b6"];
+  picked.forEach((photo, i) => {
+    const color = highlightColors[i % highlightColors.length];
+    slides.push({
+      type: "highlight",
+      label: "HIGHLIGHTS",
+      title: heroTitleCase(photo.event_title || "ONE4ONE"),
+      subtitle: photo.event_location ? `${photo.event_title} · ${photo.event_location}` : (photo.event_title || "ONE4ONE"),
+      date: photo.event_date ? heroFormatDate(photo.event_date) : "",
+      tag: "Gallery",
+      tagColor: color,
+      img: photo.storage_path || "",
+      cta: { text: "See All Photos", href: "#gallery" },
+      accentColor: color,
+      overlayColor: `linear-gradient(135deg, rgba(13,13,26,0.82) 0%, rgba(13,13,26,0.25) 70%, ${color}14 100%)`,
+    });
+  });
+
+  return slides.length > 0 ? slides : null; // null → use fallback
+}
+
+// ── Fetch hero data (events + a handful of photos) ────────────────────────────
+async function fetchHeroData() {
+  // Events
+  const evRes = await fetch(`${BASE_URL}/api/events?page=1&limit=50`);
+  if (!evRes.ok) throw new Error(`Events fetch failed: ${evRes.status}`);
+  const evJson = await evRes.json();
+  const events = evJson.status === "success" ? (evJson.data.events || []) : [];
+
+  // Photos — fetch from all events in parallel, take newest first
+  const mediaResults = await Promise.allSettled(
+    events.map(ev =>
+      fetch(`${BASE_URL}/api/events/${ev.id}/media?page=1&limit=20`)
+        .then(r => r.json())
+        .then(j => ({
+          event: ev,
+          files: j.status === "success" ? j.data.media_files || [] : [],
+        }))
+    )
+  );
+
+  let photos = [];
+  mediaResults.forEach(result => {
+    if (result.status === "fulfilled") {
+      const { event, files } = result.value;
+      files
+        .filter(f => f.file_type === "photo" && f.storage_path)
+        .forEach(f => photos.push({
+          ...f,
+          event_id: event.id,
+          event_title: event.title,
+          event_date: event.event_date,
+          event_location: event.location,
+        }));
+    }
+  });
+  photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  return { events, photos };
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+function HeroSlideshow({ onImageClick }) {
+  const [slides, setSlides]           = useState(FALLBACK_SLIDES);
+  const [heroReady, setHeroReady]     = useState(false); // true once API resolves
+  const [current, setCurrent]         = useState(0);
+  const [prev, setPrev]               = useState(null);
+  const [loaded, setLoaded]           = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const intervalRef                   = useRef(null);
+
+  // ── Load from API ──
+  useEffect(() => {
+    let cancelled = false;
+    setTimeout(() => { if (!cancelled) setLoaded(true); }, 200);
+
+    (async () => {
+      try {
+        const { events, photos } = await fetchHeroData();
+        const dynamic = buildSlides(events, photos);
+        if (!cancelled && dynamic) {
+          setSlides(dynamic);
+          setCurrent(0);
+          setPrev(null);
+        }
+      } catch {
+        // silently keep fallback slides
+      } finally {
+        if (!cancelled) setHeroReady(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
 
   const goTo = useCallback((idx, dir = 1) => {
-    if (isTransitioning || idx === current) return;
+    if (isTransitioning || idx === current || slides.length <= 1) return;
     setIsTransitioning(true);
     setPrev(current);
-    setDirection(dir);
     setCurrent(idx);
     setTimeout(() => { setPrev(null); setIsTransitioning(false); }, 900);
-  }, [current, isTransitioning]);
+  }, [current, isTransitioning, slides.length]);
 
   useEffect(() => {
+    if (slides.length <= 1) return;
     intervalRef.current = setInterval(() => {
-      goTo((current + 1) % SLIDES.length, 1);
+      goTo((current + 1) % slides.length, 1);
     }, 6000);
     return () => clearInterval(intervalRef.current);
-  }, [current, goTo]);
+  }, [current, goTo, slides.length]);
 
-  const slide = SLIDES[current];
+  const slide = slides[current] || FALLBACK_SLIDES[0];
+
   const [ref, statsVisible] = useInView(0.1);
   const stats = [
-    { value: "2", suffix: "+", label: "Events" },
-    { value: "100", suffix: "+", label: "Athletes" },
-    { value: "3", suffix: "", label: "Countries" },
+    { value: "2",   suffix: "+", label: "Events"   },
+    { value: "100", suffix: "+", label: "Athletes"  },
+    { value: "3",   suffix: "",  label: "Countries" },
   ];
   const c1 = useCounter(stats[0].value, statsVisible);
   const c2 = useCounter(stats[1].value, statsVisible);
@@ -477,18 +649,29 @@ function HeroSlideshow({ onImageClick }) {
   return (
     <section id="home" style={{ position: "relative", height: "100vh", minHeight: 640, overflow: "hidden", background: "#0d0d1a" }}>
 
-      {/* Slides */}
-      {SLIDES.map((s, i) => (
-        <div key={i} style={{
+      {/* ── All slides stacked ── */}
+      {slides.map((s, i) => (
+        <div key={`${i}-${s.img}`} style={{
           position: "absolute", inset: 0,
-          opacity: i === current ? 1 : (i === prev ? 0 : 0),
+          opacity: i === current ? 1 : 0,
           transition: "opacity 0.9s cubic-bezier(0.16,1,0.3,1)",
           zIndex: i === current ? 2 : (i === prev ? 1 : 0),
         }}>
           <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-            <img src={s.img} alt={s.title}
-              style={{ width: "100%", height: "100%", objectFit: "cover", transformOrigin: "center", animation: i === current ? "heroKenBurns 7s ease-out forwards" : "none" }}
-              onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `linear-gradient(135deg, #${Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0')}, #0d0d1a)`; }} />
+            {s.img ? (
+              <img
+                src={s.img}
+                alt={s.title}
+                style={{ width: "100%", height: "100%", objectFit: "cover", transformOrigin: "center", animation: i === current ? "heroKenBurns 7s ease-out forwards" : "none" }}
+                onError={ev => {
+                  ev.target.style.display = "none";
+                  ev.target.parentNode.style.background = "linear-gradient(135deg, #1a1a2e, #0d0d1a)";
+                }}
+              />
+            ) : (
+              // No cover image — show a gradient placeholder
+              <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, #1a1a2e 0%, #0d0d1a 100%)" }} />
+            )}
             <div style={{ position: "absolute", inset: 0, background: s.overlayColor }} />
           </div>
         </div>
@@ -503,26 +686,30 @@ function HeroSlideshow({ onImageClick }) {
       {/* Left accent line */}
       <div style={{ position: "absolute", left: "1.5rem", top: "20%", bottom: "20%", width: 1, background: "linear-gradient(to bottom, transparent, rgba(201,168,76,0.5), transparent)", zIndex: 5 }} />
 
-      {/* Content */}
+      {/* ── Content ── */}
       <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "0 2rem 5rem 3rem", maxWidth: 1320, margin: "0 auto", left: 0, right: 0 }}>
 
-        {/* Slide label */}
+        {/* Label + tag */}
         <div key={`label-${current}`} style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.25rem", animation: loaded ? "slideInLeft 0.7s 0.1s both cubic-bezier(0.16,1,0.3,1)" : "none" }}>
           <div style={{ width: 32, height: 1, background: slide.accentColor }} />
           <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.72rem", fontWeight: 700, color: slide.accentColor, letterSpacing: "0.18em", textTransform: "uppercase" }}>{slide.label}</span>
           <span style={{ padding: "0.2rem 0.75rem", borderRadius: 2, background: slide.tagColor, color: "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.68rem", letterSpacing: "0.1em", textTransform: "uppercase" }}>{slide.tag}</span>
         </div>
 
-        {/* Main title */}
+        {/* Title */}
         <h1 key={`title-${current}`} style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "clamp(3.5rem, 10vw, 7rem)", fontWeight: 700, color: "#fff", lineHeight: 1.0, marginBottom: "1.25rem", letterSpacing: "-0.02em", whiteSpace: "pre-line", animation: loaded ? "fadeUp 0.8s 0.2s both cubic-bezier(0.16,1,0.3,1)" : "none", textShadow: "0 4px 40px rgba(0,0,0,0.5)" }}>
           {slide.title}
         </h1>
 
-        {/* Subtitle + Date */}
+        {/* Subtitle + date */}
         <div key={`sub-${current}`} style={{ display: "flex", alignItems: "center", gap: "1.5rem", marginBottom: "2.5rem", animation: loaded ? "fadeUp 0.8s 0.35s both cubic-bezier(0.16,1,0.3,1)" : "none", flexWrap: "wrap" }}>
           <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.95rem", color: "rgba(255,255,255,0.65)", fontWeight: 300 }}>{slide.subtitle}</span>
-          <span style={{ width: 1, height: 16, background: "rgba(255,255,255,0.2)" }} />
-          <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.8rem", color: slide.accentColor, letterSpacing: "0.08em" }}>{slide.date}</span>
+          {slide.date && (
+            <>
+              <span style={{ width: 1, height: 16, background: "rgba(255,255,255,0.2)" }} />
+              <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.8rem", color: slide.accentColor, letterSpacing: "0.08em" }}>{slide.date}</span>
+            </>
+          )}
         </div>
 
         {/* CTAs */}
@@ -548,26 +735,26 @@ function HeroSlideshow({ onImageClick }) {
         </div>
       </div>
 
-      {/* Slide nav dots */}
+      {/* ── Slide nav dots ── */}
       <div style={{ position: "absolute", right: "2rem", top: "50%", transform: "translateY(-50%)", zIndex: 6, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {SLIDES.map((_, i) => (
+        {slides.map((_, i) => (
           <button key={i} onClick={() => goTo(i, i > current ? 1 : -1)} style={{ display: "block", width: i === current ? 3 : 2, height: i === current ? 32 : 16, borderRadius: 4, background: i === current ? "#C9A84C" : "rgba(255,255,255,0.3)", border: "none", cursor: "pointer", transition: "all 0.4s cubic-bezier(0.16,1,0.3,1)", padding: 0 }} />
         ))}
       </div>
 
-      {/* Slide arrows */}
-      <button onClick={() => goTo((current - 1 + SLIDES.length) % SLIDES.length, -1)} style={{ position: "absolute", bottom: "8rem", right: "5rem", zIndex: 6, width: 48, height: 48, borderRadius: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.25s" }}
+      {/* ── Prev / Next arrows ── */}
+      <button onClick={() => goTo((current - 1 + slides.length) % slides.length, -1)} style={{ position: "absolute", bottom: "8rem", right: "5rem", zIndex: 6, width: 48, height: 48, borderRadius: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.25s" }}
         onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.25)"}
         onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}>
         <ChevronLeft />
       </button>
-      <button onClick={() => goTo((current + 1) % SLIDES.length, 1)} style={{ position: "absolute", bottom: "8rem", right: "2rem", zIndex: 6, width: 48, height: 48, borderRadius: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.25s" }}
+      <button onClick={() => goTo((current + 1) % slides.length, 1)} style={{ position: "absolute", bottom: "8rem", right: "2rem", zIndex: 6, width: 48, height: 48, borderRadius: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.25s" }}
         onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.25)"}
         onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}>
         <ChevronRight />
       </button>
 
-      {/* Slide progress bar */}
+      {/* ── Progress bar ── */}
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(255,255,255,0.1)", zIndex: 6 }}>
         <div key={current} style={{ height: "100%", background: "linear-gradient(90deg, #C9A84C, #e8c96a)", animation: "lineExpand 6s linear forwards", width: "0%" }} />
       </div>
@@ -1177,36 +1364,195 @@ function Events({ onImageClick, onCertClick }) {
   );
 }
 
-// ── Gallery ───────────────────────────────────────────────────────────────────
+// ── Gallery (Homepage Section — drop-in replacement) ─────────────────────────
+// Fetches live photos from the DB using the same API pattern as the gallery page.
+// Displays them as an immersive cinematic slideshow with a film-strip thumbnail
+// row at the bottom. The filter buttons, social links, and "View Full Gallery"
+// CTA are all preserved exactly as before.
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+
+// ── API helpers (mirrors gallery page exactly) ────────────────────────────────
+// ── Gallery (Homepage Section — replace your existing Gallery function) ────────
+// Changes from previous version:
+//   1. scrollIntoView replaced with manual scrollLeft on the thumb container
+//      (no more page-level scrolling when slide advances)
+//   2. Slides now crossfade in random order with Ken Burns zoom — matching the
+//      hero section style rather than a linear sequential slideshow
+// Everything else (filters, social links, "View Full Gallery" CTA) is unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function fetchAllGalleryMedia() {
+  const evRes = await fetch(`${BASE_URL}/api/events?page=1&limit=50`);
+  if (!evRes.ok) throw new Error(`Events fetch failed: ${evRes.status}`);
+  const evJson = await evRes.json();
+  if (evJson.status !== "success") throw new Error(evJson.message || "Failed to load events");
+  const eventList = evJson.data.events || [];
+
+  const mediaResults = await Promise.allSettled(
+    eventList.map(ev =>
+      fetch(`${BASE_URL}/api/events/${ev.id}/media?page=1&limit=100`)
+        .then(r => r.json())
+        .then(j => ({
+          event: ev,
+          files: j.status === "success" ? j.data.media_files || [] : [],
+        }))
+    )
+  );
+
+  let combined = [];
+  mediaResults.forEach(result => {
+    if (result.status === "fulfilled") {
+      const { event, files } = result.value;
+      files.forEach(f => {
+        combined.push({
+          ...f,
+          event_id: event.id,
+          event_title: event.title,
+          event_date: event.event_date,
+          event_location: event.location,
+        });
+      });
+    }
+  });
+
+  return combined
+    .filter(f => f.file_type === "photo" && f.storage_path)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+function guessLabel(eventTitle = "") {
+  const t = eventTitle.toLowerCase();
+  if (t.includes("run") || t.includes("loop") || t.includes("marathon") || t.includes("5k") || t.includes("10k")) return "Running";
+  if (t.includes("hik") || t.includes("trek") || t.includes("mountain") || t.includes("kenya") || t.includes("dash")) return "Hiking";
+  if (t.includes("tour") || t.includes("trip") || t.includes("travel")) return "Tour";
+  return "Event";
+}
+
 function Gallery({ onImageClick }) {
   const [ref, visible] = useInView();
-  const [hovered, setHovered] = useState(null);
+
+  // ── Data ──
+  const [allPhotos, setAllPhotos]     = useState([]);
+  const [loadingMedia, setLoadingMedia] = useState(true);
+  const [mediaError, setMediaError]   = useState(null);
+
+  // ── Slide state ──
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [prevIndex, setPrevIndex]     = useState(null);
+  const [paused, setPaused]           = useState(false);
+  const intervalRef                   = useRef(null);
+
+  // ── Thumb strip ref (DOM node, NOT useState — avoids re-renders) ──
+  const thumbsContainerRef = useRef(null);
+
+  // ── Filter ──
   const [filter, setFilter] = useState("All");
 
-  const items = [
-    { src: "/gallery/gallery 1.png", label: "Running", title: "Vienna Loop" },
-    { src: "/gallery/gallery 2.png", label: "Running", title: "Vienna Loop" },
-    { src: "/gallery/gallery 3.png", label: "Running", title: "Vienna Loop" },
-    { src: "/gallery/gallery 4.png", label: "Hiking", title: "Mt. Kenya Day Dash" },
-    { src: "/gallery/gallery 5.png", label: "Hiking", title: "Mt. Kenya Day Dash" },
-    { src: "/gallery/gallery 6.png", label: "Hiking", title: "Mt. Kenya Day Dash" },
-  ];
-  const fallbackEmoji = ["⛰️", "🏃", "🌅", "🏋️", "🗺️", "🏁"];
-  const filters = ["All", "Running", "Hiking"];
-  const filtered = filter === "All" ? items : items.filter(i => i.label === filter);
-
+  // ── Social links ──
   const socialLinks = [
     { icon: <InstagramIcon size={16} />, name: "Instagram", url: "https://www.instagram.com/one4one_placeholder" },
-    { icon: <FacebookIcon size={16} />, name: "Facebook", url: "https://www.facebook.com/one4one_placeholder" },
-    { icon: <TwitterIcon size={16} />, name: "Twitter", url: "https://www.twitter.com/one4one_placeholder" },
+    { icon: <FacebookIcon  size={16} />, name: "Facebook",  url: "https://www.facebook.com/one4one_placeholder" },
+    { icon: <TwitterIcon   size={16} />, name: "Twitter",   url: "https://www.twitter.com/one4one_placeholder" },
   ];
 
+  // ── Fetch once ──
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoadingMedia(true);
+      setMediaError(null);
+      try {
+        const photos = await fetchAllGalleryMedia();
+        if (!cancelled) setAllPhotos(photos);
+      } catch (err) {
+        if (!cancelled) setMediaError(err.message || "Failed to load photos");
+      } finally {
+        if (!cancelled) setLoadingMedia(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Derived filtered list ──
+  const filters  = ["All", ...Array.from(new Set(allPhotos.map(p => guessLabel(p.event_title))))];
+  const filtered = filter === "All" ? allPhotos : allPhotos.filter(p => guessLabel(p.event_title) === filter);
+
+  // Reset on filter / data change
+  useEffect(() => {
+    setActiveIndex(0);
+    setPrevIndex(null);
+  }, [filter, allPhotos.length]);
+
+  // ── Pick a RANDOM next index (hero-style) ──
+  const advanceRandom = useCallback(() => {
+    if (filtered.length <= 1) return;
+    setActiveIndex(prev => {
+      // pick any index that isn't the current one
+      let next;
+      do { next = Math.floor(Math.random() * filtered.length); } while (next === prev);
+      setPrevIndex(prev);
+      return next;
+    });
+  }, [filtered.length]);
+
+  // ── Auto-advance ──
+  useEffect(() => {
+    if (paused || filtered.length <= 1) return;
+    intervalRef.current = setInterval(advanceRandom, 5000);
+    return () => clearInterval(intervalRef.current);
+  }, [paused, filtered.length, filter, advanceRandom]);
+
+  // ── Scroll thumb into view WITHOUT touching page scroll ──
+  useEffect(() => {
+    const container = thumbsContainerRef.current;
+    if (!container) return;
+    const thumb = container.querySelector(`[data-thumb="${activeIndex}"]`);
+    if (!thumb) return;
+    // Manual calculation — scrolls only the thumb strip, never the page
+    const containerLeft  = container.getBoundingClientRect().left;
+    const thumbLeft      = thumb.getBoundingClientRect().left;
+    const offset         = thumbLeft - containerLeft - container.clientWidth / 2 + thumb.clientWidth / 2;
+    container.scrollLeft += offset;
+  }, [activeIndex]);
+
+  // ── Manual nav ──
+  const goTo = (idx) => {
+    clearInterval(intervalRef.current);
+    setPrevIndex(activeIndex);
+    setActiveIndex(idx);
+  };
+
+  const prev = () => goTo((activeIndex - 1 + filtered.length) % filtered.length);
+  const next = () => goTo((activeIndex + 1) % filtered.length);
+
+  const activePhoto = filtered[activeIndex] || null;
+
+  // Ken Burns directions — cycle through for variety
+  const KB_VARIANTS = [
+    { transformStart: "scale(1.08) translate(0%,    0%)",    transformEnd: "scale(1.18) translate(-2%, -1%)" },
+    { transformStart: "scale(1.06) translate(1%,    1%)",    transformEnd: "scale(1.15) translate(-1%, -2%)" },
+    { transformStart: "scale(1.1)  translate(-1.5%, 0%)",    transformEnd: "scale(1.2)  translate(1%,   1%)" },
+    { transformStart: "scale(1.07) translate(0%,   -1%)",    transformEnd: "scale(1.16) translate(2%,   0%)" },
+  ];
+
+  const SkeletonSlideshow = () => (
+    <div style={{ borderRadius: 20, overflow: "hidden", aspectRatio: "16/8", background: "linear-gradient(90deg,#1a1a2e 25%,#22223a 50%,#1a1a2e 75%)", backgroundSize: "400px 100%", animation: "skeletonShimmer 1.4s ease infinite" }} />
+  );
+
   return (
-    <section id="gallery" ref={ref} style={{ padding: "7rem 1.5rem", background: "#111122", position: "relative", overflow: "hidden" }}>
+    <section
+      id="gallery"
+      ref={ref}
+      style={{ padding: "7rem 1.5rem", background: "#111122", position: "relative", overflow: "hidden" }}
+    >
       <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(circle at 80% 20%, rgba(201,168,76,0.04) 0%, transparent 50%)", pointerEvents: "none" }} />
 
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "3rem", flexWrap: "wrap", gap: "1.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(24px)", transition: "all 0.7s" }}>
+
+        {/* ── Header row ── */}
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "2.5rem", flexWrap: "wrap", gap: "1.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(24px)", transition: "all 0.7s" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
               <div style={{ width: 28, height: 1, background: "#C9A84C" }} />
@@ -1214,52 +1560,206 @@ function Gallery({ onImageClick }) {
             </div>
             <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2.5rem, 7vw, 4rem)", fontWeight: 700, color: "#fff", lineHeight: 1.1 }}>Event Gallery</h2>
           </div>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             {filters.map(f => (
-              <button key={f} onClick={() => setFilter(f)} style={{ padding: "0.5rem 1.1rem", borderRadius: 4, border: "1px solid", borderColor: filter === f ? "#C9A84C" : "rgba(255,255,255,0.12)", background: filter === f ? "rgba(201,168,76,0.12)" : "transparent", color: filter === f ? "#C9A84C" : "rgba(255,255,255,0.45)", fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: "0.75rem", cursor: "pointer", transition: "all 0.25s", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+              <button key={f} onClick={() => setFilter(f)}
+                style={{ padding: "0.5rem 1.1rem", borderRadius: 4, border: "1px solid", borderColor: filter === f ? "#C9A84C" : "rgba(255,255,255,0.12)", background: filter === f ? "rgba(201,168,76,0.12)" : "transparent", color: filter === f ? "#C9A84C" : "rgba(255,255,255,0.45)", fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: "0.75rem", cursor: "pointer", transition: "all 0.25s", letterSpacing: "0.06em", textTransform: "uppercase" }}>
                 {f}
               </button>
             ))}
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem" }}>
-          {filtered.map((item, i) => (
-            <div key={`${filter}-${i}`} className="gallery-item" style={{ position: "relative", borderRadius: 12, overflow: "hidden", aspectRatio: "4/3", background: "#1a1a2e", cursor: "zoom-in", opacity: visible ? 1 : 0, transform: visible ? "none" : "scale(0.96)", transition: `all 0.6s ease ${i * 0.08}s` }}
-              onMouseEnter={() => setHovered(i)}
-              onMouseLeave={() => setHovered(null)}
-              onClick={() => onImageClick(item.src, item.title)}>
-              <img src={item.src} alt={item.title} style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.5s ease" }}
-                onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i * 40 + 200},20%,${15 + i * 4}%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:3rem">${fallbackEmoji[i]}</div>`; }} />
-              <div className="gallery-overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.9) 0%, transparent 60%)", opacity: 0, transition: "opacity 0.3s" }} />
-              <div style={{ position: "absolute", bottom: 16, left: 16, opacity: hovered === i ? 1 : 0, transition: "all 0.35s", transform: hovered === i ? "translateY(0)" : "translateY(8px)" }}>
-                <span style={{ background: "rgba(201,168,76,0.9)", color: "#0d0d1a", padding: "0.2rem 0.7rem", borderRadius: 3, fontSize: "0.68rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "block", marginBottom: "0.4rem", width: "fit-content", letterSpacing: "0.08em", textTransform: "uppercase" }}>{item.label}</span>
-                <span style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: "1.1rem", color: "#fff" }}>{item.title}</span>
-              </div>
-              <div style={{ position: "absolute", top: 14, right: 14, opacity: hovered === i ? 1 : 0, transition: "all 0.3s", background: "rgba(255,255,255,0.1)", backdropFilter: "blur(8px)", borderRadius: 4, padding: "0.4rem 0.6rem", border: "1px solid rgba(255,255,255,0.2)" }}>
-                <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.65rem", color: "#fff", letterSpacing: "0.08em" }}>🔍 VIEW</span>
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* ── Main display ── */}
+        {loadingMedia ? (
+          <SkeletonSlideshow />
+        ) : mediaError ? (
+          <div style={{ borderRadius: 16, border: "1px solid rgba(220,38,38,0.2)", background: "rgba(220,38,38,0.04)", padding: "2.5rem", textAlign: "center" }}>
+            <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>⚠️</div>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "0.9rem" }}>{mediaError}</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ borderRadius: 16, border: "1px dashed rgba(255,255,255,0.08)", padding: "4rem 2rem", textAlign: "center" }}>
+            <div style={{ fontSize: "3rem", marginBottom: "0.75rem", opacity: 0.4 }}>📷</div>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.3)", fontSize: "0.9rem" }}>No photos yet for this filter.</p>
+          </div>
+        ) : (
+          <div
+            style={{ opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(20px)", transition: "all 0.8s 0.15s" }}
+            onMouseEnter={() => setPaused(true)}
+            onMouseLeave={() => setPaused(false)}
+          >
+            {/* ── Hero-style crossfade stage ── */}
+            <div
+              style={{ position: "relative", borderRadius: 20, overflow: "hidden", aspectRatio: "16/8", background: "#080812", cursor: "zoom-in", boxShadow: "0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(201,168,76,0.1)" }}
+              onClick={() => activePhoto && onImageClick(activePhoto.storage_path, activePhoto.event_title)}
+            >
+              {/* All slides stacked — each fades in/out independently (hero pattern) */}
+              {filtered.map((photo, i) => {
+                const kb = KB_VARIANTS[i % KB_VARIANTS.length];
+                const isActive = i === activeIndex;
+                return (
+                  <div
+                    key={photo.id}
+                    style={{
+                      position: "absolute", inset: 0,
+                      opacity: isActive ? 1 : 0,
+                      transition: "opacity 1.1s cubic-bezier(0.16,1,0.3,1)",
+                      zIndex: isActive ? 2 : 1,
+                    }}
+                  >
+                    <img
+                      src={photo.storage_path}
+                      alt={photo.event_title}
+                      style={{
+                        width: "100%", height: "100%", objectFit: "cover",
+                        // Ken Burns: active slide animates, inactive stays at end position
+                        animation: isActive ? `heroKenBurns 8s ease-out forwards` : "none",
+                        transform: isActive ? kb.transformStart : kb.transformEnd,
+                      }}
+                      onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i * 40 + 200},22%,10%)`; }}
+                    />
+                  </div>
+                );
+              })}
 
+              {/* Cinematic gradient overlays — identical to hero section */}
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(13,13,26,0.6) 0%, rgba(13,13,26,0.2) 60%, transparent 100%)", zIndex: 3, pointerEvents: "none" }} />
+              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "60%", background: "linear-gradient(to top, rgba(8,8,18,0.95) 0%, rgba(8,8,18,0.35) 60%, transparent 100%)", zIndex: 3, pointerEvents: "none" }} />
+              {/* Left accent line (mirrors hero) */}
+              <div style={{ position: "absolute", left: "1.5rem", top: "15%", bottom: "15%", width: 1, background: "linear-gradient(to bottom, transparent, rgba(201,168,76,0.4), transparent)", zIndex: 4, pointerEvents: "none" }} />
+
+              {/* Slide counter */}
+              <div style={{ position: "absolute", top: 20, right: 24, zIndex: 5, display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(0,0,0,0.5)", backdropFilter: "blur(10px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "0.35rem 0.85rem" }}>
+                <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1rem", fontWeight: 700, color: "#C9A84C" }}>{activeIndex + 1}</span>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.7rem", color: "rgba(255,255,255,0.3)" }}>/ {filtered.length}</span>
+              </div>
+
+              {/* Activity label chip */}
+              {activePhoto && (
+                <div style={{ position: "absolute", top: 20, left: 24, zIndex: 5 }}>
+                  <span style={{ background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.28rem 0.85rem", borderRadius: 3, fontSize: "0.68rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                    {guessLabel(activePhoto.event_title)}
+                  </span>
+                </div>
+              )}
+
+              {/* Caption — hero-style bottom-left */}
+              {activePhoto && (
+                <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "2rem 2rem 1.75rem 3rem", zIndex: 5 }}>
+                  {/* Slide label eyebrow */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.6rem" }}>
+                    <div style={{ width: 28, height: 1, background: "#C9A84C" }} />
+                    <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.16em", textTransform: "uppercase" }}>
+                      {guessLabel(activePhoto.event_title)}
+                    </span>
+                  </div>
+                  <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, fontSize: "clamp(1.4rem, 3vw, 2.2rem)", color: "#fff", lineHeight: 1.1, marginBottom: "0.5rem", letterSpacing: "-0.01em" }}>
+                    {activePhoto.event_title}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", flexWrap: "wrap" }}>
+                    {activePhoto.event_location && (
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", color: "rgba(255,255,255,0.5)" }}>
+                        📍 {activePhoto.event_location}
+                      </span>
+                    )}
+                    {activePhoto.event_date && (
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", color: "rgba(255,255,255,0.35)" }}>
+                        {new Date(activePhoto.event_date).toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Prev / next arrows */}
+              {filtered.length > 1 && (
+                <>
+                  <button onClick={e => { e.stopPropagation(); prev(); }}
+                    style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", zIndex: 6, width: 46, height: 46, borderRadius: "50%", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.25)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.5)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(0,0,0,0.55)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                  </button>
+                  <button onClick={e => { e.stopPropagation(); next(); }}
+                    style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", zIndex: 6, width: 46, height: 46, borderRadius: "50%", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.25)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.5)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(0,0,0,0.55)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                </>
+              )}
+
+              {/* Vertical dot nav (mirrors hero) */}
+              {filtered.length > 1 && filtered.length <= 12 && (
+                <div style={{ position: "absolute", right: "1.25rem", top: "50%", transform: "translateY(-50%)", zIndex: 6, display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                  {filtered.map((_, i) => (
+                    <button key={i} onClick={e => { e.stopPropagation(); goTo(i); }}
+                      style={{ display: "block", width: i === activeIndex ? 3 : 2, height: i === activeIndex ? 28 : 12, borderRadius: 4, background: i === activeIndex ? "#C9A84C" : "rgba(255,255,255,0.3)", border: "none", cursor: "pointer", transition: "all 0.4s cubic-bezier(0.16,1,0.3,1)", padding: 0 }} />
+                  ))}
+                </div>
+              )}
+
+              {/* Paused indicator */}
+              {paused && filtered.length > 1 && (
+                <div style={{ position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)", zIndex: 6, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, padding: "0.25rem 0.75rem" }}>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.1em", textTransform: "uppercase" }}>⏸ Paused</span>
+                </div>
+              )}
+
+              {/* Progress bar */}
+              {filtered.length > 1 && (
+                <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(255,255,255,0.08)", zIndex: 7 }}>
+                  <div key={activeIndex} style={{ height: "100%", background: "linear-gradient(90deg,#C9A84C,#e8c96a)", animation: "lineExpand 5s linear forwards", width: "0%" }} />
+                </div>
+              )}
+            </div>
+
+            {/* ── Thumbnail strip — scrolled via scrollLeft, NOT scrollIntoView ── */}
+            {filtered.length > 1 && (
+              <div
+                ref={thumbsContainerRef}
+                style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", overflowX: "auto", paddingBottom: "0.25rem", scrollbarWidth: "none", msOverflowStyle: "none", scrollBehavior: "smooth" }}
+              >
+                {filtered.map((photo, i) => (
+                  <div
+                    key={photo.id}
+                    data-thumb={i}
+                    onClick={() => goTo(i)}
+                    style={{ flexShrink: 0, width: 80, height: 52, borderRadius: 8, overflow: "hidden", cursor: "pointer", border: `2px solid ${i === activeIndex ? "#C9A84C" : "rgba(255,255,255,0.07)"}`, opacity: i === activeIndex ? 1 : 0.4, transition: "all 0.35s", transform: i === activeIndex ? "scale(1.06)" : "scale(1)", boxShadow: i === activeIndex ? "0 0 16px rgba(201,168,76,0.35)" : "none" }}
+                  >
+                    <img src={photo.storage_path} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i * 40 + 200},22%,12%)`; }} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Footer row (unchanged) ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "3rem", paddingTop: "2rem", borderTop: "1px solid rgba(255,255,255,0.06)", flexWrap: "wrap", gap: "1.5rem", opacity: visible ? 1 : 0, transition: "all 0.7s 0.4s" }}>
           <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
             <span style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.35)", fontSize: "0.85rem" }}>Follow us:</span>
             {socialLinks.map(({ icon, name, url }) => (
-              <a key={name} href={url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", borderRadius: 4, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: "0.75rem", color: "rgba(255,255,255,0.6)", cursor: "pointer", transition: "all 0.25s", textDecoration: "none", letterSpacing: "0.05em" }}
+              <a key={name} href={url} target="_blank" rel="noopener noreferrer"
+                style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", borderRadius: 4, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: "0.75rem", color: "rgba(255,255,255,0.6)", cursor: "pointer", transition: "all 0.25s", textDecoration: "none", letterSpacing: "0.05em" }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.color = "#C9A84C"; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}>
                 {icon} {name}
               </a>
             ))}
           </div>
-          <a href="/gallery" style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.75rem 1.75rem", borderRadius: 4, border: "1px solid rgba(201,168,76,0.4)", background: "rgba(201,168,76,0.06)", color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", textDecoration: "none", transition: "all 0.3s", letterSpacing: "0.08em", textTransform: "uppercase" }}
+
+          <a href="/gallery"
+            style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.75rem 1.75rem", borderRadius: 4, border: "1px solid rgba(201,168,76,0.4)", background: "rgba(201,168,76,0.06)", color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", textDecoration: "none", transition: "all 0.3s", letterSpacing: "0.08em", textTransform: "uppercase" }}
             onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.15)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
             onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.06)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; }}>
             View Full Gallery <ArrowRight />
           </a>
         </div>
+
       </div>
     </section>
   );
@@ -1268,86 +1768,112 @@ function Gallery({ onImageClick }) {
 // ── Results ───────────────────────────────────────────────────────────────────
 function Results() {
   const [ref, visible] = useInView();
-  const events = [
-    { title: "Mt. Kenya Day Dash", date: "24th January 2026", available: true, participants: 5, distance: "Day Hike" },
-  ];
+
   return (
     <section id="results" ref={ref} style={{ padding: "7rem 1.5rem", background: "#0d0d1a", position: "relative", overflow: "hidden" }}>
+      {/* Ambient glow */}
       <div style={{ position: "absolute", bottom: "0%", right: "-5%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(201,168,76,0.04) 0%, transparent 70%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", top: "10%", left: "-8%", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(201,168,76,0.03) 0%, transparent 70%)", pointerEvents: "none" }} />
 
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
+
+        {/* ── Header ── */}
         <div style={{ marginBottom: "3.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(24px)", transition: "all 0.7s" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
             <div style={{ width: 28, height: 1, background: "#C9A84C" }} />
             <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.18em", textTransform: "uppercase" }}>Achievements</span>
           </div>
-          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2.5rem, 7vw, 4rem)", fontWeight: 700, color: "#fff", lineHeight: 1.1, marginBottom: "0.75rem" }}>Results & Certificates</h2>
-          <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "1rem" }}>Download your certificates and view official event results.</p>
+          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2.5rem, 7vw, 4rem)", fontWeight: 700, color: "#fff", lineHeight: 1.1, marginBottom: "0.75rem" }}>
+            Results &amp; Certificates
+          </h2>
+          <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "1rem" }}>
+            Download your certificates and view official event results.
+          </p>
         </div>
 
+        {/* ── Two action cards ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px,1fr))", gap: "1.5rem", marginBottom: "2.5rem" }}>
           {[
-            { icon: "⬆️", title: "Upload Results", desc: "Event organizers can upload official results and certificates. Participants will be able to download their certificates once uploaded.", btn: "Upload Official Results", filled: true },
-            { icon: "⬇️", title: "Download Certificates", desc: "Search for and download your event certificates and view official results from completed events.", btn: "Search Your Certificate", filled: false },
+            {
+              icon: "⬆️",
+              title: "Upload Results",
+              desc: "Event organizers can upload official results and certificates. Participants will be able to download their certificates once uploaded.",
+              btn: "Upload Official Results",
+              filled: true,
+            },
+            {
+              icon: "⬇️",
+              title: "Download Certificates",
+              desc: "Search for and download your event certificates and view official results from completed events.",
+              btn: "Search Your Certificate",
+              filled: false,
+            },
           ].map((c, i) => (
-            <div key={i} style={{ padding: "2.25rem", borderRadius: 16, background: "#111122", border: "1px solid rgba(255,255,255,0.07)", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(30px)", transition: `all 0.7s ${i * 0.15}s` }}>
-              <div style={{ width: 52, height: 52, borderRadius: 12, background: "rgba(201,168,76,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem", marginBottom: "1.5rem", border: "1px solid rgba(201,168,76,0.15)" }}>{c.icon}</div>
+            <div
+              key={i}
+              style={{ padding: "2.25rem", borderRadius: 16, background: "#111122", border: "1px solid rgba(255,255,255,0.07)", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(30px)", transition: `all 0.7s ${i * 0.15}s` }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.2)"; e.currentTarget.style.background = "#13132a"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"; e.currentTarget.style.background = "#111122"; }}
+            >
+              <div style={{ width: 52, height: 52, borderRadius: 12, background: "rgba(201,168,76,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem", marginBottom: "1.5rem", border: "1px solid rgba(201,168,76,0.15)" }}>
+                {c.icon}
+              </div>
               <h3 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "1rem", marginBottom: "0.75rem", letterSpacing: "0.02em" }}>{c.title}</h3>
               <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "0.88rem", lineHeight: 1.75, marginBottom: "1.75rem" }}>{c.desc}</p>
-              <button style={{ width: "100%", padding: "0.9rem", background: c.filled ? "linear-gradient(135deg,#C9A84C,#b8962e)" : "transparent", color: c.filled ? "#0d0d1a" : "#C9A84C", border: c.filled ? "none" : "1.5px solid rgba(201,168,76,0.4)", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", transition: "all 0.25s", letterSpacing: "0.06em" }}>
+              <a
+                href="/results"
+                style={{ display: "block", width: "100%", padding: "0.9rem", background: c.filled ? "linear-gradient(135deg,#C9A84C,#b8962e)" : "transparent", color: c.filled ? "#0d0d1a" : "#C9A84C", border: c.filled ? "none" : "1.5px solid rgba(201,168,76,0.4)", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", transition: "all 0.25s", letterSpacing: "0.06em", textDecoration: "none", textAlign: "center", boxSizing: "border-box" }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = "0.85"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.transform = "none"; }}
+              >
                 {c.btn}
-              </button>
+              </a>
             </div>
           ))}
         </div>
 
-        <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)", background: "#111122", marginBottom: "2rem" }}>
-          <div style={{ padding: "1.5rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
-            <h3 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.9rem", letterSpacing: "0.08em", textTransform: "uppercase" }}>Recent Event Results</h3>
-            <a href="/results" style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1.2rem", borderRadius: 4, border: "1px solid rgba(201,168,76,0.35)", background: "rgba(201,168,76,0.06)", color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", textDecoration: "none", transition: "all 0.25s", letterSpacing: "0.08em", textTransform: "uppercase" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.15)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.06)"; }}>
-              View All Results <ArrowRight />
-            </a>
+        {/* ── View All Results CTA banner ── */}
+        <div
+          style={{ borderRadius: 16, border: "1px solid rgba(201,168,76,0.15)", background: "linear-gradient(135deg, rgba(201,168,76,0.06) 0%, rgba(17,17,34,0.8) 60%)", padding: "2rem 2.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1.5rem", marginBottom: "2.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(20px)", transition: "all 0.7s 0.25s" }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.35)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(201,168,76,0.1) 0%, rgba(17,17,34,0.9) 60%)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.15)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(201,168,76,0.06) 0%, rgba(17,17,34,0.8) 60%)"; }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.3rem", flexShrink: 0 }}>🏆</div>
+            <div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.95rem", marginBottom: "0.25rem" }}>Official Event Results</div>
+              <div style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "0.82rem" }}>Browse all results, download certificates, and track your achievements.</div>
+            </div>
           </div>
-          {events.map((e, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "1.25rem 2rem", flexWrap: "wrap", gap: "1rem", transition: "background 0.25s" }}
-              onMouseEnter={ev => ev.currentTarget.style.background = "rgba(255,255,255,0.02)"}
-              onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
-              <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                <div style={{ width: 44, height: 44, background: "rgba(201,168,76,0.1)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem", flexShrink: 0, border: "1px solid rgba(201,168,76,0.2)" }}>🏆</div>
-                <div>
-                  <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.92rem", marginBottom: "0.2rem" }}>{e.title}</div>
-                  <div style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.35)", fontSize: "0.78rem" }}>{e.date} · {e.participants} Participants · {e.distance}</div>
-                  {e.available && <div style={{ fontFamily: "'Syne', sans-serif", color: "#4ade80", fontSize: "0.72rem", fontWeight: 700, marginTop: 4, letterSpacing: "0.06em" }}>✓ RESULTS AVAILABLE</div>}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: "0.6rem" }}>
-                <button style={{ padding: "0.5rem 1.1rem", border: "1px solid rgba(201,168,76,0.35)", background: "transparent", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#C9A84C", fontSize: "0.78rem", cursor: "pointer", letterSpacing: "0.05em" }}>
-                  View
-                </button>
-                <button style={{ padding: "0.5rem 1.1rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", border: "none", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#0d0d1a", fontSize: "0.78rem", cursor: "pointer", letterSpacing: "0.05em" }}>
-                  Download
-                </button>
-              </div>
-            </div>
-          ))}
+          <a
+            href="/results"
+            style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.75rem 1.75rem", borderRadius: 6, background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 20px rgba(201,168,76,0.25)", transition: "all 0.25s", flexShrink: 0 }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 8px 32px rgba(201,168,76,0.45)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 4px 20px rgba(201,168,76,0.25)"; e.currentTarget.style.transform = "none"; }}
+          >
+            View All Results <ArrowRight />
+          </a>
         </div>
 
+        {/* ── Medals & Certificates info cards ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px,1fr))", gap: "1.5rem" }}>
           {[
             { icon: "🥇", title: "Event Medals", desc: "All finishers receive a unique medal commemorating their achievement, featuring ONE4ONE branding and event-specific details." },
             { icon: "📜", title: "Certificates", desc: "Digital and printable certificates available for all participants. Download yours from the results portal after the event." },
           ].map((c, i) => (
-            <div key={i} style={{ background: "rgba(255,255,255,0.03)", borderRadius: 16, padding: "2rem", border: "1px solid rgba(201,168,76,0.1)", transition: "all 0.3s" }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)"}
-              onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(201,168,76,0.1)"}>
+            <div
+              key={i}
+              style={{ background: "rgba(255,255,255,0.03)", borderRadius: 16, padding: "2rem", border: "1px solid rgba(201,168,76,0.1)", transition: "all 0.3s", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(20px)", transitionDelay: `${0.35 + i * 0.12}s` }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)"; e.currentTarget.style.transform = "translateY(-3px)"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.1)"; e.currentTarget.style.transform = "none"; }}
+            >
               <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>{c.icon}</div>
               <h4 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.95rem", marginBottom: "0.6rem", letterSpacing: "0.02em" }}>{c.title}</h4>
               <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "0.85rem", lineHeight: 1.7 }}>{c.desc}</p>
             </div>
           ))}
         </div>
+
       </div>
     </section>
   );
