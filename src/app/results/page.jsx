@@ -613,12 +613,19 @@ function Navbar({ isAuthenticated, user, onLogout, onLoginClick, onUploadClick }
     <>
       <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 500, background: scrolled ? "rgba(10,10,20,0.94)" : "rgba(10,10,20,0.6)", backdropFilter: "blur(20px)", borderBottom: scrolled ? "1px solid rgba(201,168,76,0.12)" : "1px solid rgba(255,255,255,0.04)", transition: "all 0.5s", animation: mounted ? "navReveal 0.8s cubic-bezier(0.16,1,0.3,1)" : "none", maxWidth: "100vw", overflow: "hidden" }}>
         <div style={{ maxWidth: 1320, margin: "0 auto", padding: "0 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", height: 74 }}>
-          <a href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
-            <div style={{ width: 68, height: 68, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-              <img src="/media/logo2.png" alt="ONE4ONE" style={{ width: "100%", height: "100%", objectFit: "contain", transform: "scale(1.9)", transformOrigin: "center" }}
-                onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:1rem;color:#C9A84C">1·4·1</span>'; }} />
-            </div>
-          </a>
+          <a href="#home" style={{ display: "flex", alignItems: "center", gap: "0.75rem", textDecoration: "none" }}>
+  <div style={{ width: 200, height: 86, display: "flex", alignItems: "center", justifyContent: "center", overflow: "visible" }}>
+    <img
+      src="/media/logo4.png"
+      alt="ONE4ONE"
+      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+      onError={e => {
+        e.target.style.display = "none";
+        e.target.parentNode.innerHTML = '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:1.1rem;color:#C9A84C;letter-spacing:0.05em">1·4·1</span>';
+      }}
+    />
+  </div>
+</a>
 
           <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: "2rem" }}>
             {links.map(l => (

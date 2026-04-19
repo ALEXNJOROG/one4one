@@ -328,12 +328,19 @@ function Navbar() {
       }}>
         <div style={{ maxWidth: 1320, margin: "0 auto", padding: "0 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", height: 78 }}>
           {/* Logo */}
-          <a href="#home" style={{ display: "flex", alignItems: "center", gap: "0.75rem", textDecoration: "none" }}>
-            <div style={{ width: 76, height: 76, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-              <img src="/media/logo2.png" alt="ONE4ONE" style={{ width: "100%", height: "100%", objectFit: "contain", transform: "scale(1.9)", transformOrigin: "center" }}
-                onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:1.1rem;color:#C9A84C;letter-spacing:0.05em">1·4·1</span>'; }} />
-            </div>
-          </a>
+<a href="#home" style={{ display: "flex", alignItems: "center", gap: "0.75rem", textDecoration: "none" }}>
+  <div style={{ width: 200, height: 86, display: "flex", alignItems: "center", justifyContent: "center", overflow: "visible" }}>
+    <img
+      src="/media/logo4.png"
+      alt="ONE4ONE"
+      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+      onError={e => {
+        e.target.style.display = "none";
+        e.target.parentNode.innerHTML = '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:1.1rem;color:#C9A84C;letter-spacing:0.05em">1·4·1</span>';
+      }}
+    />
+  </div>
+</a>
 
           {/* Desktop Nav */}
           <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: "2.5rem" }}>
@@ -655,26 +662,401 @@ function WhatWeOrganize() {
   );
 }
 
-// ── Events ────────────────────────────────────────────────────────────────────
-function Events({ onImageClick, onCertClick }) {
-  const [ref, visible] = useInView();
+// ── Events Section (Drop-in replacement for your homepage Events component)
+// Fetches live events from the same API as the results page,
+// splits them into upcoming / past by date, and renders everything
+// in the same luxury dark aesthetic used across the site.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Config (same as results page) ────────────────────────────────────────────
+const BASE_URL = "http://75.119.159.17:9002";
+
+// ── API helper (mirrors results page) ────────────────────────────────────────
+async function fetchEvents(page = 1, limit = 50) {
+  const res = await fetch(`${BASE_URL}/api/events?page=${page}&limit=${limit}`);
+  if (!res.ok) throw new Error(`Events fetch failed: ${res.status}`);
+  const json = await res.json();
+  if (json.status !== "success") throw new Error(json.message || "Failed to load events");
+  return json.data.events || [];
+}
+
+// ── Tiny helpers ──────────────────────────────────────────────────────────────
+function formatEventDate(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+function isPast(dateStr) {
+  if (!dateStr) return false;
+  return new Date(dateStr) < new Date();
+}
+
+// ── Icons (self-contained — no external deps) ─────────────────────────────────
+const CalIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+  </svg>
+);
+const PinIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+  </svg>
+);
+const UsersIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  </svg>
+);
+const ArrowRightIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+  </svg>
+);
+const RefreshIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+  </svg>
+);
+
+// ── Skeleton card ─────────────────────────────────────────────────────────────
+function SkeletonCard() {
+  return (
+    <div style={{ borderRadius: 20, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)", background: "#111122" }}>
+      <div style={{ aspectRatio: "16/9", background: "linear-gradient(90deg,#1a1a2e 25%,#22223a 50%,#1a1a2e 75%)", backgroundSize: "400px 100%", animation: "skeletonShimmer 1.4s ease infinite" }} />
+      <div style={{ padding: "1.5rem" }}>
+        {[90, 60, 75].map((w, i) => (
+          <div key={i} style={{ height: i === 0 ? 22 : 14, width: `${w}%`, borderRadius: 6, marginBottom: "0.75rem", background: "linear-gradient(90deg,#1a1a2e 25%,#22223a 50%,#1a1a2e 75%)", backgroundSize: "400px 100%", animation: "skeletonShimmer 1.4s ease infinite" }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Upcoming event card ───────────────────────────────────────────────────────
+function UpcomingCard({ event, index, visible, onImageClick }) {
+  const [hovered, setHovered] = useState(false);
+
+  // Derive participant/capacity label from event fields
+  const participantLabel =
+    event.max_participants
+      ? `${event.max_participants} Spots`
+      : event.participants_count
+      ? `${event.participants_count} Registered`
+      : null;
+
+  const meta = [
+    event.event_date  && { icon: <CalIcon />,   text: formatEventDate(event.event_date) },
+    event.location    && { icon: <PinIcon />,   text: event.location },
+    participantLabel  && { icon: <UsersIcon />, text: participantLabel },
+    event.distance    && { icon: null,           text: `🏃 ${event.distance}` },
+  ].filter(Boolean);
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        borderRadius: 20,
+        overflow: "hidden",
+        border: `1px solid ${hovered ? "rgba(201,168,76,0.4)" : "rgba(201,168,76,0.15)"}`,
+        background: "#111122",
+        transition: "all 0.4s cubic-bezier(0.16,1,0.3,1)",
+        opacity: visible ? 1 : 0,
+        transform: visible ? "none" : "translateY(30px)",
+        transitionDelay: `${index * 0.12}s`,
+        boxShadow: hovered ? "0 20px 60px rgba(201,168,76,0.12)" : "0 8px 40px rgba(0,0,0,0.4)",
+      }}
+    >
+      {/* Image */}
+      <div
+        style={{ position: "relative", aspectRatio: "16/9", background: "#1a1a2e", overflow: "hidden", cursor: event.cover_image ? "zoom-in" : "default" }}
+        onClick={() => event.cover_image && onImageClick(event.cover_image, event.title)}
+      >
+        {event.cover_image ? (
+          <img
+            src={event.cover_image}
+            alt={event.title}
+            style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.6s ease", transform: hovered ? "scale(1.06)" : "scale(1)" }}
+            onError={ev => {
+              ev.target.style.display = "none";
+              ev.target.parentNode.style.background = "linear-gradient(135deg,#1e1e3a,#0d0d1a)";
+              ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:5rem;opacity:0.2">🏃</div>`;
+            }}
+          />
+        ) : (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "5rem", opacity: 0.15 }}>🏃</div>
+        )}
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.7) 0%, transparent 55%)" }} />
+
+        {/* Status badge */}
+        <div style={{ position: "absolute", top: 14, left: 14, background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.28rem 0.85rem", borderRadius: 3, fontSize: "0.68rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+          Registration Open
+        </div>
+
+        {/* Date chip */}
+        {event.event_date && (
+          <div style={{ position: "absolute", bottom: 14, left: 14, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", border: "1px solid rgba(201,168,76,0.25)", borderRadius: 6, padding: "0.35rem 0.75rem", display: "flex", alignItems: "center", gap: "0.4rem", color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.06em" }}>
+            <CalIcon /> {formatEventDate(event.event_date)}
+          </div>
+        )}
+      </div>
+
+      {/* Body */}
+      <div style={{ padding: "1.6rem 1.75rem 1.75rem" }}>
+        <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, fontSize: "1.5rem", color: "#fff", marginBottom: "0.4rem", letterSpacing: "-0.01em", lineHeight: 1.2 }}>
+          {event.title}
+        </h3>
+
+        {event.description && (
+          <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "0.83rem", lineHeight: 1.7, marginBottom: "1.1rem", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+            {event.description}
+          </p>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem", marginBottom: "1.5rem" }}>
+          {meta.map((m, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.55rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.82rem", color: "rgba(255,255,255,0.45)" }}>
+              {m.icon && <span style={{ color: "#C9A84C", flexShrink: 0 }}>{m.icon}</span>}
+              {m.text}
+            </div>
+          ))}
+        </div>
+
+        <a href="#contact" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", padding: "0.85rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 20px rgba(201,168,76,0.3)", transition: "all 0.3s" }}
+          onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 8px 32px rgba(201,168,76,0.45)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+          onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 4px 20px rgba(201,168,76,0.3)"; e.currentTarget.style.transform = "none"; }}>
+          Register Now <ArrowRightIcon />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ── Past event card ───────────────────────────────────────────────────────────
+function PastEventCard({ event, index, visible, onImageClick, onCertClick }) {
+  const [expanded, setExpanded] = useState(false);
   const [photoHovered, setPhotoHovered] = useState(null);
 
-  const upcomingEvent = {
-    title: "Karen, Vienna Loop Marathon",
-    date: "28th February 2026",
-    location: "Karen, Nairobi",
-    distance: "Full Marathon",
-    participants: "100+ Expected",
-    status: "Registration Open",
-    image: "/media/upcoming.png"
-  };
+  // Try to get photo gallery from event data (media_files or photos array)
+  const photos = event.photos || event.media_files || [];
 
-  const pastEvent = {
+  // Certificates embedded in event data (static fallback)
+  const certificates = event.certificates || [];
+
+  const meta = [
+    event.event_date && { icon: <CalIcon />,   text: formatEventDate(event.event_date) },
+    event.location   && { icon: <PinIcon />,   text: event.location },
+    event.participants_count && { icon: <UsersIcon />, text: `${event.participants_count} Participants` },
+  ].filter(Boolean);
+
+  return (
+    <div style={{
+      borderRadius: 20,
+      overflow: "hidden",
+      border: "1px solid rgba(255,255,255,0.07)",
+      background: "#111122",
+      opacity: visible ? 1 : 0,
+      transform: visible ? "none" : "translateY(30px)",
+      transition: "all 0.7s",
+      transitionDelay: `${index * 0.1}s`,
+      marginBottom: "1.5rem",
+    }}>
+      {/* Card header row */}
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{ display: "flex", alignItems: "center", gap: "1.25rem", padding: "1.5rem 2rem", cursor: "pointer", transition: "background 0.2s", flexWrap: "wrap" }}
+        onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.03)"}
+        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+      >
+        {/* Thumbnail */}
+        <div style={{ width: 72, height: 72, borderRadius: 12, overflow: "hidden", flexShrink: 0, border: "1px solid rgba(255,255,255,0.08)", background: "#1a1a2e" }}>
+          {event.cover_image ? (
+            <img src={event.cover_image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2rem">🏆</div>`; }} />
+          ) : (
+            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "2rem" }}>🏆</div>
+          )}
+        </div>
+
+        {/* Info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.65rem", marginBottom: "0.35rem", flexWrap: "wrap" }}>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "#fff", fontSize: "1.4rem", letterSpacing: "-0.01em" }}>{event.title}</h3>
+            <span style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)", padding: "0.15rem 0.65rem", borderRadius: 3, fontSize: "0.63rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase", flexShrink: 0 }}>
+              Completed
+            </span>
+          </div>
+
+          {event.description && (
+            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.35)", fontSize: "0.8rem", lineHeight: 1.6, marginBottom: "0.5rem", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+              {event.description}
+            </p>
+          )}
+
+          <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap" }}>
+            {meta.map((m, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.38)" }}>
+                <span style={{ color: "#C9A84C" }}>{m.icon}</span> {m.text}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Expand chevron */}
+        <div style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.35)", transition: "all 0.3s", transform: expanded ? "rotate(180deg)" : "none", flexShrink: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+
+      {/* Expandable body */}
+      <div style={{ maxHeight: expanded ? 2000 : 0, overflow: "hidden", transition: "max-height 0.55s cubic-bezier(0.16,1,0.3,1)", borderTop: expanded ? "1px solid rgba(255,255,255,0.06)" : "none" }}>
+
+        {/* Cover image (large) */}
+        {event.cover_image && (
+          <div
+            onClick={() => onImageClick(event.cover_image, event.title)}
+            style={{ position: "relative", height: 260, overflow: "hidden", cursor: "zoom-in" }}
+          >
+            <img src={event.cover_image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              onError={ev => { ev.target.style.display = "none"; }}
+            />
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(17,17,34,0.9) 0%, rgba(0,0,0,0.15) 60%)" }} />
+            <div style={{ position: "absolute", bottom: 20, left: 24 }}>
+              <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.8rem", fontWeight: 700, color: "#fff", letterSpacing: "-0.01em" }}>{event.title}</div>
+              {event.event_date && <div style={{ fontFamily: "'DM Sans', sans-serif", color: "#C9A84C", fontSize: "0.8rem" }}>{formatEventDate(event.event_date)}</div>}
+            </div>
+          </div>
+        )}
+
+        {/* Photo grid — only shown if event has photo array */}
+        {photos.length > 0 && (
+          <div style={{ padding: "1.5rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+            <h4 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.82rem", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span>📸</span> Event Photos
+            </h4>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "0.65rem" }}>
+              {photos.map((photo, i) => (
+                <div
+                  key={i}
+                  style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "4/3", background: `hsl(${i * 40 + 200},22%,12%)`, cursor: "zoom-in" }}
+                  onMouseEnter={() => setPhotoHovered(i)}
+                  onMouseLeave={() => setPhotoHovered(null)}
+                  onClick={() => onImageClick(photo.src || photo.storage_path, photo.caption || "")}
+                >
+                  <img src={photo.src || photo.storage_path} alt={photo.caption || ""} style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.45s ease", transform: photoHovered === i ? "scale(1.07)" : "scale(1)" }}
+                    onError={ev => { ev.target.style.display = "none"; }} />
+                  {photo.caption && photoHovered === i && (
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.75)", padding: "0.4rem 0.6rem" }}>
+                      <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.65rem", color: "#fff" }}>{photo.caption}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Certificates — shown if event has certificates array (static) */}
+        {certificates.length > 0 && (
+          <div style={{ padding: "1.5rem 2rem" }}>
+            <h4 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.82rem", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span>📜</span> Participation Certificates
+            </h4>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "0.75rem" }}>
+              {certificates.map((cert, i) => (
+                <div
+                  key={i}
+                  onClick={() => onCertClick(cert)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: "0.9rem 1.1rem", border: "1px solid rgba(201,168,76,0.12)", transition: "all 0.3s", cursor: "pointer", gap: "0.65rem" }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.35)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.12)"; e.currentTarget.style.transform = "none"; }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.7rem", minWidth: 0 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: "rgba(201,168,76,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem", flexShrink: 0, border: "1px solid rgba(201,168,76,0.18)" }}>🏅</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.85rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cert.name}</div>
+                      <div style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.3)", fontSize: "0.7rem", marginTop: 2 }}>{event.title} · {event.event_date ? new Date(event.event_date).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : ""}</div>
+                      <div style={{ fontFamily: "'Syne', sans-serif", color: "#C9A84C", fontSize: "0.65rem", marginTop: 3, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Preview →</div>
+                    </div>
+                  </div>
+                  <a
+                    href={cert.file}
+                    download target="_blank" rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    style={{ display: "flex", alignItems: "center", gap: "0.3rem", padding: "0.42rem 0.85rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0, letterSpacing: "0.05em" }}
+                  >
+                    ⬇ Save
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* View full results CTA */}
+        <div style={{ padding: "1.25rem 2rem 1.75rem", borderTop: certificates.length > 0 ? "1px solid rgba(255,255,255,0.04)" : "none", display: "flex", justifyContent: "flex-end" }}>
+          <a
+            href="/results"
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 1.3rem", border: "1px solid rgba(201,168,76,0.3)", borderRadius: 6, color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.1)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+          >
+            View Full Results &amp; Certificates <ArrowRightIcon />
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Empty state ───────────────────────────────────────────────────────────────
+function EmptyState({ type }) {
+  return (
+    <div style={{ borderRadius: 20, border: "1px dashed rgba(255,255,255,0.08)", padding: "3rem 2rem", textAlign: "center", background: "rgba(255,255,255,0.015)" }}>
+      <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem", opacity: 0.5 }}>{type === "upcoming" ? "🔔" : "📭"}</div>
+      <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "rgba(255,255,255,0.4)", fontSize: "1.3rem", marginBottom: "0.4rem" }}>
+        {type === "upcoming" ? "No Upcoming Events Yet" : "No Past Events"}
+      </h3>
+      <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.2)", fontSize: "0.82rem" }}>
+        {type === "upcoming" ? "New events will appear here as soon as they're announced." : "Completed events will be archived here."}
+      </p>
+    </div>
+  );
+}
+
+// ── Section label ─────────────────────────────────────────────────────────────
+function SectionLabel({ eyebrow, heading, visible, delay = 0 }) {
+  return (
+    <div style={{ marginBottom: "2.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(20px)", transition: `all 0.7s ${delay}s` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+        <div style={{ width: 28, height: 1, background: "#C9A84C" }} />
+        <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.18em", textTransform: "uppercase" }}>{eyebrow}</span>
+      </div>
+      <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2.2rem, 6vw, 3.75rem)", fontWeight: 700, color: "#fff", lineHeight: 1.05, letterSpacing: "-0.02em" }}>{heading}</h2>
+    </div>
+  );
+}
+
+// ── MAIN COMPONENT (drop this in place of your current Events function) ───────
+function Events({ onImageClick, onCertClick }) {
+  const [ref, visible] = useInView();
+
+  // ── Live event data ──
+  const [allEvents, setAllEvents] = useState([]);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [eventsError, setEventsError] = useState(null);
+
+  // ── Static past-event data preserved from your original homepage ──
+  // (Mt. Kenya Day Dash with its photos & certificates, shown until the API
+  //  returns an event with the same name / a matching id)
+  const STATIC_MTKD = {
+    _static: true,
+    id: "__mtkd_static__",
     title: "Mt. Kenya Day Dash",
-    subtitle: "Naromoru Route",
-    date: "24th January 2026",
-    guides: ["Peter Waihenya", "Elijah Kabugi"],
+    description: "Naromoru Route · A breathtaking climb to Point Lenana guided by Peter Waihenya & Elijah Kabugi.",
+    event_date: "2026-01-24T00:00:00.000Z",
+    location: "Mt. Kenya, Naromoru",
     photos: [
       { src: "/media/events/mtkd - 1.png", caption: "Group Hike" },
       { src: "/media/events/mtkd - 2.png", caption: "Crystal Clear" },
@@ -685,127 +1067,111 @@ function Events({ onImageClick, onCertClick }) {
     ],
     certificates: [
       { name: "Christopher", file: "/certificates/cert 1.pdf" },
-      { name: "Meek", file: "/certificates/Meek.pdf" },
-      { name: "Timothy", file: "/certificates/Timothy.pdf" },
-      { name: "Wambui", file: "/certificates/Wambui.pdf" },
-      { name: "Peter", file: "/certificates/Peter.pdf" },
+      { name: "Meek",        file: "/certificates/Meek.pdf"   },
+      { name: "Timothy",     file: "/certificates/Timothy.pdf" },
+      { name: "Wambui",      file: "/certificates/Wambui.pdf"  },
+      { name: "Peter",       file: "/certificates/Peter.pdf"   },
     ],
+    cover_image: "/media/events/mtkd - 6.png",
   };
 
+  const loadEvents = useCallback(async () => {
+    setLoadingEvents(true);
+    setEventsError(null);
+    try {
+      const events = await fetchEvents();
+      setAllEvents(events);
+    } catch (err) {
+      setEventsError(err.message || "Failed to load events");
+    } finally {
+      setLoadingEvents(false);
+    }
+  }, []);
+
+  useEffect(() => { loadEvents(); }, [loadEvents]);
+
+  // ── Split & merge ──
+  const now = new Date();
+
+  // De-duplicate: if API already returns Mt. Kenya Day Dash, don't show static copy
+  const apiTitles = allEvents.map(e => (e.title || "").toLowerCase());
+  const showStaticMTKD = !apiTitles.some(t => t.includes("kenya") && t.includes("dash"));
+
+  const upcoming = allEvents.filter(e => e.event_date && new Date(e.event_date) >= now);
+  const pastFromAPI = allEvents.filter(e => !e.event_date || new Date(e.event_date) < now);
+
+  // Static event is always past
+  const pastEvents = showStaticMTKD
+    ? [STATIC_MTKD, ...pastFromAPI]
+    : pastFromAPI;
+
   return (
-    <section id="events" ref={ref} style={{ padding: "7rem 1.5rem", background: "#0d0d1a", position: "relative", overflow: "hidden" }}>
+    <section
+      id="events"
+      ref={ref}
+      style={{ padding: "7rem 1.5rem", background: "#0d0d1a", position: "relative", overflow: "hidden" }}
+    >
+      {/* Ambient glow */}
       <div style={{ position: "absolute", top: "10%", left: "-5%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(201,168,76,0.05) 0%, transparent 70%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: "5%", right: "-8%", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(201,168,76,0.04) 0%, transparent 70%)", pointerEvents: "none" }} />
 
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
 
-        {/* ─── Upcoming ─── */}
-        <div style={{ marginBottom: "5rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.5rem", opacity: visible ? 1 : 0, transition: "all 0.7s" }}>
-            <div style={{ width: 28, height: 1, background: "#C9A84C" }} />
-            <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.18em", textTransform: "uppercase" }}>Next Up</span>
-          </div>
-          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2.5rem, 7vw, 4rem)", fontWeight: 700, color: "#fff", lineHeight: 1.1, marginBottom: "2.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(24px)", transition: "all 0.7s" }}>
-            Upcoming Events
-          </h2>
+        {/* ───── UPCOMING ───── */}
+        <div style={{ marginBottom: "6rem" }}>
+          <SectionLabel eyebrow="Next Up" heading="Upcoming Events" visible={visible} />
 
-          <div style={{ display: "flex", justifyContent: "flex-start" }}>
-            <div className="event-card" style={{ width: "min(440px, 100%)", borderRadius: 20, overflow: "hidden", border: "1px solid rgba(201,168,76,0.15)", background: "#111122", transition: "all 0.4s cubic-bezier(0.16,1,0.3,1)", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(30px)", transitionDelay: "0.15s", boxShadow: "0 8px 40px rgba(0,0,0,0.4)" }}>
-              <div style={{ position: "relative", aspectRatio: "16/9", background: "#1a1a2e", overflow: "hidden", cursor: "zoom-in" }}
-                onClick={() => onImageClick(upcomingEvent.image, upcomingEvent.title)}>
-                <img src={upcomingEvent.image} alt={upcomingEvent.title} className="event-card-img" style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.5s ease" }}
-                  onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = "linear-gradient(135deg,#1e1e3a,#0d0d1a)"; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:4rem">🏃</div>`; }} />
-                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.6) 0%, transparent 50%)" }} />
-                <div style={{ position: "absolute", top: 16, right: 16, background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.3rem 0.9rem", borderRadius: 3, fontSize: "0.72rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                  {upcomingEvent.status}
-                </div>
-              </div>
-              <div style={{ padding: "1.75rem" }}>
-                <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, fontSize: "1.5rem", color: "#fff", marginBottom: "1.25rem", letterSpacing: "-0.01em" }}>{upcomingEvent.title}</h3>
-                {[["📅", upcomingEvent.date], ["📍", upcomingEvent.location], ["🕐", upcomingEvent.distance], ["👥", upcomingEvent.participants]].map(([ico, val], j) => (
-                  <div key={j} style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.5rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "rgba(255,255,255,0.5)" }}>
-                    <span>{ico}</span> {val}
-                  </div>
-                ))}
-                <a href="#contact" className="btn-primary" style={{ display: "block", width: "100%", marginTop: "1.5rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", textAlign: "center", boxShadow: "0 4px 20px rgba(201,168,76,0.35)", transition: "all 0.3s", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                  Register Now
-                </a>
-              </div>
+          {loadingEvents ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "1.5rem" }}>
+              <SkeletonCard />
+              <SkeletonCard />
             </div>
-          </div>
-        </div>
-
-        {/* ─── Past Events ─── */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.5rem" }}>
-          <div style={{ width: 28, height: 1, background: "#C9A84C" }} />
-          <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.18em", textTransform: "uppercase" }}>History</span>
-        </div>
-        <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem, 5vw, 3rem)", fontWeight: 700, color: "#fff", marginBottom: "2rem" }}>Past Events</h2>
-
-        <div style={{ borderRadius: 20, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)", background: "#111122", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(30px)", transition: "all 0.7s 0.2s" }}>
-          {/* Header */}
-          <div style={{ padding: "1.75rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
-                <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "#fff", fontSize: "1.6rem" }}>{pastEvent.title}</h3>
-                <span style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.25)", padding: "0.2rem 0.8rem", borderRadius: 3, fontSize: "0.7rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.08em", textTransform: "uppercase" }}>Completed</span>
+          ) : eventsError ? (
+            <div style={{ borderRadius: 16, border: "1px solid rgba(220,38,38,0.2)", background: "rgba(220,38,38,0.05)", padding: "2rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+              <div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fca5a5", marginBottom: "0.3rem", fontSize: "0.88rem" }}>⚠️ Couldn't load events</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.35)", fontSize: "0.8rem" }}>{eventsError}</div>
               </div>
-              <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.4)", fontSize: "0.9rem", marginBottom: "0.75rem" }}>{pastEvent.subtitle}</p>
-              <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
-                {[["📅", pastEvent.date], ["👥", `Guides: ${pastEvent.guides.join(" & ")}`]].map(([ico, val], i) => (
-                  <div key={i} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.82rem", color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                    <span>{ico}</span> {val}
-                  </div>
-                ))}
-              </div>
+              <button onClick={loadEvents} style={{ display: "flex", alignItems: "center", gap: "0.45rem", padding: "0.6rem 1.25rem", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.07em", textTransform: "uppercase" }}>
+                <RefreshIcon /> Retry
+              </button>
             </div>
-          </div>
-
-          {/* Photos */}
-          <div style={{ padding: "1.75rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <h4 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.88rem", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: "1.25rem", display: "flex", alignItems: "center", gap: "0.6rem" }}>
-              <span>📸</span> Event Photos
-            </h4>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "0.75rem" }}>
-              {pastEvent.photos.map((photo, i) => (
-                <div key={i} className="gallery-item" style={{ position: "relative", borderRadius: 12, overflow: "hidden", aspectRatio: "4/3", background: `hsl(${i * 35 + 200},25%,${15 + i * 3}%)`, cursor: "zoom-in" }}
-                  onMouseEnter={() => setPhotoHovered(i)}
-                  onMouseLeave={() => setPhotoHovered(null)}
-                  onClick={() => onImageClick(photo.src, photo.caption)}>
-                  <img src={photo.src} alt={photo.caption} style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.5s ease" }}
-                    onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.5rem"><span style="font-size:2rem">${["⛰️","🏃","📸","🏁","🏅","🤝"][i]}</span><span style="font-family:'DM Sans',sans-serif;font-size:0.7rem;color:rgba(255,255,255,0.5);text-align:center;padding:0 0.5rem">${photo.caption}</span></div>`; }} />
-                  <div className="gallery-overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 60%)", opacity: 0, transition: "opacity 0.3s" }} />
-                  <div style={{ position: "absolute", bottom: 8, left: 10, opacity: photoHovered === i ? 1 : 0, transition: "all 0.3s", transform: photoHovered === i ? "translateY(0)" : "translateY(4px)" }}>
-                    <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", color: "#fff", letterSpacing: "0.05em" }}>{photo.caption}</span>
-                  </div>
-                </div>
+          ) : upcoming.length === 0 ? (
+            <EmptyState type="upcoming" />
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "1.5rem" }}>
+              {upcoming.map((event, i) => (
+                <UpcomingCard key={event.id} event={event} index={i} visible={visible} onImageClick={onImageClick} />
               ))}
             </div>
-          </div>
-
-          {/* Certificates */}
-          <div style={{ padding: "1.75rem 2rem" }}>
-            <h4 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.88rem", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: "1.25rem", display: "flex", alignItems: "center", gap: "0.6rem" }}>
-              <span>📜</span> Participation Certificates
-            </h4>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px,1fr))", gap: "0.85rem" }}>
-              {pastEvent.certificates.map((cert, i) => (
-                <div key={i} className="cert-card" onClick={() => onCertClick(cert)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: "1rem 1.25rem", border: "1px solid rgba(201,168,76,0.12)", transition: "all 0.3s", cursor: "pointer", gap: "0.75rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(201,168,76,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem", flexShrink: 0, border: "1px solid rgba(201,168,76,0.2)" }}>🏅</div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#fff", fontSize: "0.88rem" }}>{cert.name}</div>
-                      <div style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.35)", fontSize: "0.72rem", marginTop: 2 }}>Mt. Kenya Day Dash · Jan 2026</div>
-                      <div style={{ fontFamily: "'Syne', sans-serif", color: "#C9A84C", fontSize: "0.68rem", marginTop: 3, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Preview →</div>
-                    </div>
-                  </div>
-                  <a href={cert.file} download target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "0.3rem", padding: "0.45rem 0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0, letterSpacing: "0.05em" }}>
-                    ⬇ Save
-                  </a>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
+
+        {/* ───── PAST ───── */}
+        <div>
+          <SectionLabel eyebrow="History" heading="Past Events" visible={visible} delay={0.1} />
+
+          {loadingEvents ? (
+            <>
+              <SkeletonCard />
+              <div style={{ marginTop: "1.25rem" }}><SkeletonCard /></div>
+            </>
+          ) : pastEvents.length === 0 ? (
+            <EmptyState type="past" />
+          ) : (
+            pastEvents.map((event, i) => (
+              <PastEventCard
+                key={event.id}
+                event={event}
+                index={i}
+                visible={visible}
+                onImageClick={onImageClick}
+                onCertClick={onCertClick}
+              />
+            ))
+          )}
+        </div>
+
       </div>
     </section>
   );
@@ -1099,7 +1465,7 @@ function Footer() {
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
               <div style={{ width: 44, height: 44, borderRadius: 8, background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.2)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
-                <img src="/media/logo.png" alt="ONE4ONE" style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                <img src="/media/logo4.png" alt="ONE4ONE" style={{ width: "100%", height: "100%", objectFit: "contain" }}
                   onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:0.85rem;color:#C9A84C">1·4·1</span>'; }} />
               </div>
               <span style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, fontSize: "1.1rem", color: "#fff", letterSpacing: "0.05em" }}>ONE4ONE</span>
