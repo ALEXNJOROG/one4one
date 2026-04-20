@@ -856,7 +856,7 @@ function WhatWeOrganize() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Config (same as results page) ────────────────────────────────────────────
-const BASE_URL = "http://75.119.159.17:9002";
+const BASE_URL = "https://backone.one4one.co";
 
 // ── API helper (mirrors results page) ────────────────────────────────────────
 async function fetchEvents(page = 1, limit = 50) {
