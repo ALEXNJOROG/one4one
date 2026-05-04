@@ -392,11 +392,11 @@ function AuthModal({ onClose, onSuccess, showToast }) {
               {loading ? <Spinner size={16} color="#C9A84C" /> : (mode === "login" ? "Sign In" : "Sign Up")}
             </button>
           </div>
-          <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
+          {/* <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
             <button type="button" onClick={() => setMode(m => m === "login" ? "signup" : "login")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 4, textDecorationColor: "#C9A84C" }}>
               {mode === "login" ? "Need an account? Sign up" : "Already have an account? Sign in"}
             </button>
-          </div>
+          </div> */}
         </form>
       </div>
     </div>
