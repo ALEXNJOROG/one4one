@@ -111,9 +111,8 @@ const GLOBAL_CSS = `
   }
 `;
 
-// ── API Layer (with auth token support) ───────────────────────────────────────
+// ── API Layer ─────────────────────────────────────────────────────────────────
 const api = {
-  // Auth endpoints
   async signup(username, email, password) {
     const res = await fetch(`${BASE_URL}/api/auth/signup`, {
       method: "POST",
@@ -138,7 +137,6 @@ const api = {
     return { token: json.token, user: { username: json.username, email, role: "admin" } };
   },
 
-  // Events
   async getEvents(page = 1, limit = 50) {
     const res = await fetch(`${BASE_URL}/api/events?page=${page}&limit=${limit}`);
     if (!res.ok) throw new Error(`Events fetch failed: ${res.status}`);
@@ -328,6 +326,12 @@ const CalendarIcon = () => (
     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
   </svg>
 );
+const ExternalLinkIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+    <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+  </svg>
+);
 const InstagramIcon = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
@@ -361,9 +365,9 @@ function Spinner({ size = 24, color = "#C9A84C" }) {
 // ── Skeleton Cards ────────────────────────────────────────────────────────────
 function SkeletonGrid({ count = 8 }) {
   return (
-    <div style={{ columns: "3 280px", gap: "1rem" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "1rem" }}>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="skeleton" style={{ height: [220, 280, 200, 260, 300, 240, 180, 250][i % 8], marginBottom: "1rem", breakInside: "avoid" }} />
+        <div key={i} className="skeleton" style={{ height: 220, borderRadius: 10 }} />
       ))}
     </div>
   );
@@ -411,9 +415,9 @@ const inputStyle = {
   transition: "border-color 0.2s",
 };
 
-// ── Auth Modal (Login / Signup) ───────────────────────────────────────────────
+// ── Auth Modal ────────────────────────────────────────────────────────────────
 function AuthModal({ onClose, onSuccess, showToast }) {
-  const [mode, setMode] = useState("login"); // "login" or "signup"
+  const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ username: "", email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [fieldFocus, setFieldFocus] = useState(null);
@@ -442,7 +446,6 @@ function AuthModal({ onClose, onSuccess, showToast }) {
         await api.signup(username, email, password);
         showToast("Account created! Please log in.", "success");
         setMode("login");
-        // Pre-fill login form (except password)
         setForm(f => ({ ...f, password: "" }));
       } else {
         const { token, user } = await api.login(username, email, password);
@@ -467,72 +470,32 @@ function AuthModal({ onClose, onSuccess, showToast }) {
       <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.25)", borderRadius: 16, padding: "2.2rem", width: "100%", maxWidth: 460, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.8rem" }}>
           <div>
-            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.3rem" }}>
-              Admin Access
-            </div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.3rem" }}>Admin Access</div>
             <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.8rem", fontWeight: 700, color: "#fff" }}>
               {mode === "login" ? "Sign In" : "Create Account"}
             </h3>
           </div>
           <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>✕</button>
         </div>
-
         <form onSubmit={handleSubmit}>
           <FormField label="Username" required>
-            <input
-              value={form.username}
-              onChange={set("username")}
-              onFocus={() => setFieldFocus("username")}
-              onBlur={() => setFieldFocus(null)}
-              placeholder="Your username"
-              style={dynBorder("username")}
-              autoComplete="username"
-            />
+            <input value={form.username} onChange={set("username")} onFocus={() => setFieldFocus("username")} onBlur={() => setFieldFocus(null)} placeholder="Your username" style={dynBorder("username")} autoComplete="username" />
           </FormField>
-
           <FormField label="Email" required>
-            <input
-              type="email"
-              value={form.email}
-              onChange={set("email")}
-              onFocus={() => setFieldFocus("email")}
-              onBlur={() => setFieldFocus(null)}
-              placeholder="you@example.com"
-              style={dynBorder("email")}
-              autoComplete="email"
-            />
+            <input type="email" value={form.email} onChange={set("email")} onFocus={() => setFieldFocus("email")} onBlur={() => setFieldFocus(null)} placeholder="you@example.com" style={dynBorder("email")} autoComplete="email" />
           </FormField>
-
           <FormField label="Password" required>
-            <input
-              type="password"
-              value={form.password}
-              onChange={set("password")}
-              onFocus={() => setFieldFocus("password")}
-              onBlur={() => setFieldFocus(null)}
-              placeholder="••••••••"
-              style={dynBorder("password")}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-            />
+            <input type="password" value={form.password} onChange={set("password")} onFocus={() => setFieldFocus("password")} onBlur={() => setFieldFocus(null)} placeholder="••••••••" style={dynBorder("password")} autoComplete={mode === "login" ? "current-password" : "new-password"} />
           </FormField>
-
           <div style={{ marginTop: "1.8rem" }}>
-            <button
-              type="submit"
-              disabled={loading}
-              style={{ width: "100%", padding: "0.9rem", borderRadius: 6, background: loading ? "rgba(201,168,76,0.2)" : "linear-gradient(135deg,#C9A84C,#b8962e)", color: loading ? "rgba(201,168,76,0.4)" : "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", cursor: loading ? "not-allowed" : "pointer", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+            <button type="submit" disabled={loading} style={{ width: "100%", padding: "0.9rem", borderRadius: 6, background: loading ? "rgba(201,168,76,0.2)" : "linear-gradient(135deg,#C9A84C,#b8962e)", color: loading ? "rgba(201,168,76,0.4)" : "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", cursor: loading ? "not-allowed" : "pointer", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
               {loading ? <Spinner size={16} color="#C9A84C" /> : (mode === "login" ? "Sign In" : "Sign Up")}
             </button>
           </div>
-
           <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
-            <button
-              type="button"
-              onClick={() => setMode(m => m === "login" ? "signup" : "login")}
-              style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 4, textDecorationColor: "#C9A84C", transition: "color 0.2s" }}
+            <button type="button" onClick={() => setMode(m => m === "login" ? "signup" : "login")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 4, textDecorationColor: "#C9A84C", transition: "color 0.2s" }}
               onMouseEnter={e => e.currentTarget.style.color = "#C9A84C"}
-              onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.4)"}
-            >
+              onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.4)"}>
               {mode === "login" ? "Need an account? Sign up" : "Already have an account? Sign in"}
             </button>
           </div>
@@ -551,6 +514,7 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
     event_date: event?.event_date ? formatDateForInput(event.event_date) : "",
     location: event?.location || "",
     cover_image: event?.cover_image || "",
+    drive_link: event?.drive_link || "",
   });
   const [saving, setSaving] = useState(false);
   const [fieldFocus, setFieldFocus] = useState(null);
@@ -570,6 +534,7 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
       let result;
       if (isEdit) {
         result = await api.updateEvent(event.id, form, token);
+        console.log("Updated event response:", result);
         showToast("Event updated successfully!", "success");
       } else {
         result = await api.createEvent(form, token);
@@ -592,12 +557,9 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2100, background: "rgba(5,5,15,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, padding: "2rem", width: "100%", maxWidth: 540, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", maxHeight: "90vh", overflowY: "auto" }}>
-        {/* Header */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.75rem" }}>
           <div>
-            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.3rem" }}>
-              Events Manager
-            </div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.3rem" }}>Events Manager</div>
             <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.7rem", fontWeight: 700, color: "#fff" }}>
               {isEdit ? "Edit Event" : "Create New Event"}
             </h3>
@@ -605,74 +567,50 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
           <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 4 }}>✕</button>
         </div>
 
-        {/* Fields */}
         <FormField label="Event Title" required>
-          <input
-            value={form.title}
-            onChange={set("title")}
-            onFocus={() => setFieldFocus("title")}
-            onBlur={() => setFieldFocus(null)}
-            placeholder="e.g. Mt. Kenya Day Dash 2026"
-            style={dynBorder("title")}
-          />
+          <input value={form.title} onChange={set("title")} onFocus={() => setFieldFocus("title")} onBlur={() => setFieldFocus(null)} placeholder="e.g. Mt. Kenya Day Dash 2026" style={dynBorder("title")} />
         </FormField>
 
         <FormField label="Description">
-          <textarea
-            value={form.description}
-            onChange={set("description")}
-            onFocus={() => setFieldFocus("description")}
-            onBlur={() => setFieldFocus(null)}
-            placeholder="A short description of the event..."
-            rows={3}
-            style={{ ...dynBorder("description"), resize: "vertical", minHeight: 80 }}
-          />
+          <textarea value={form.description} onChange={set("description")} onFocus={() => setFieldFocus("description")} onBlur={() => setFieldFocus(null)} placeholder="A short description of the event..." rows={3} style={{ ...dynBorder("description"), resize: "vertical", minHeight: 80 }} />
         </FormField>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
           <FormField label="Event Date" required>
-            <input
-              type="date"
-              value={form.event_date}
-              onChange={set("event_date")}
-              onFocus={() => setFieldFocus("event_date")}
-              onBlur={() => setFieldFocus(null)}
-              style={{ ...dynBorder("event_date"), colorScheme: "dark" }}
-            />
+            <input type="date" value={form.event_date} onChange={set("event_date")} onFocus={() => setFieldFocus("event_date")} onBlur={() => setFieldFocus(null)} style={{ ...dynBorder("event_date"), colorScheme: "dark" }} />
           </FormField>
-
           <FormField label="Location">
-            <input
-              value={form.location}
-              onChange={set("location")}
-              onFocus={() => setFieldFocus("location")}
-              onBlur={() => setFieldFocus(null)}
-              placeholder="e.g. Nairobi, Kenya"
-              style={dynBorder("location")}
-            />
+            <input value={form.location} onChange={set("location")} onFocus={() => setFieldFocus("location")} onBlur={() => setFieldFocus(null)} placeholder="e.g. Nairobi, Kenya" style={dynBorder("location")} />
           </FormField>
         </div>
 
         <FormField label="Cover Image URL">
-          <input
-            value={form.cover_image}
-            onChange={set("cover_image")}
-            onFocus={() => setFieldFocus("cover_image")}
-            onBlur={() => setFieldFocus(null)}
-            placeholder="https://... (optional)"
-            style={dynBorder("cover_image")}
-          />
+          <input value={form.cover_image} onChange={set("cover_image")} onFocus={() => setFieldFocus("cover_image")} onBlur={() => setFieldFocus(null)} placeholder="https://... (optional)" style={dynBorder("cover_image")} />
         </FormField>
 
-        {/* Actions */}
+        {/* ── Google Drive Album Link ── */}
+        <FormField label="Google Drive Album Link">
+          <input
+            value={form.drive_link}
+            onChange={set("drive_link")}
+            onFocus={() => setFieldFocus("drive_link")}
+            onBlur={() => setFieldFocus(null)}
+            placeholder="https://drive.google.com/drive/folders/..."
+            style={dynBorder("drive_link")}
+          />
+          {form.drive_link && (
+            <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.74rem", color: "rgba(201,168,76,0.7)" }}>✓ Drive link set —</span>
+              <a href={form.drive_link} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.74rem", color: "#C9A84C", textDecoration: "underline" }}>preview link</a>
+            </div>
+          )}
+        </FormField>
+
         <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.75rem" }}>
           <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
             Cancel
           </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            style={{ flex: 2, padding: "0.75rem", borderRadius: 6, background: saving ? "rgba(201,168,76,0.2)" : "linear-gradient(135deg,#C9A84C,#b8962e)", color: saving ? "rgba(201,168,76,0.4)" : "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: saving ? "not-allowed" : "pointer", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+          <button onClick={handleSubmit} disabled={saving} style={{ flex: 2, padding: "0.75rem", borderRadius: 6, background: saving ? "rgba(201,168,76,0.2)" : "linear-gradient(135deg,#C9A84C,#b8962e)", color: saving ? "rgba(201,168,76,0.4)" : "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: saving ? "not-allowed" : "pointer", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
             {saving ? <><Spinner size={16} color="#C9A84C" /> {isEdit ? "Saving..." : "Creating..."}</> : isEdit ? "Save Changes" : "Create Event"}
           </button>
         </div>
@@ -719,10 +657,7 @@ function DeleteEventModal({ event, onClose, onDeleted, showToast, token }) {
           <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
             Cancel
           </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            style={{ flex: 1.5, padding: "0.75rem", borderRadius: 6, background: deleting ? "rgba(220,38,38,0.15)" : "rgba(220,38,38,0.85)", color: "#fff", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: deleting ? "not-allowed" : "pointer", letterSpacing: "0.08em", textTransform: "uppercase", border: "1px solid rgba(220,38,38,0.4)", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+          <button onClick={handleDelete} disabled={deleting} style={{ flex: 1.5, padding: "0.75rem", borderRadius: 6, background: deleting ? "rgba(220,38,38,0.15)" : "rgba(220,38,38,0.85)", color: "#fff", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: deleting ? "not-allowed" : "pointer", letterSpacing: "0.08em", textTransform: "uppercase", border: "1px solid rgba(220,38,38,0.4)", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
             {deleting ? <><Spinner size={14} color="#fff" /> Deleting...</> : <><TrashIcon /> Yes, Delete</>}
           </button>
         </div>
@@ -777,7 +712,7 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.40)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
-        <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, width: "100%", maxWidth: 700, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", display: "flex", flexDirection: "column", maxHeight: "88vh" }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, width: "100%", maxWidth: 820, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", display: "flex", flexDirection: "column", maxHeight: "88vh" }}>
 
           {/* Modal Header */}
           <div style={{ padding: "1.75rem 2rem 1.25rem", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
@@ -787,16 +722,12 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
                 <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.8rem", fontWeight: 700, color: "#fff" }}>Events Manager</h2>
               </div>
               <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
-                <button
-                  onClick={() => setShowCreateForm(true)}
-                  style={{ display: "flex", alignItems: "center", gap: "0.45rem", padding: "0.55rem 1.1rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                <button onClick={() => setShowCreateForm(true)} style={{ display: "flex", alignItems: "center", gap: "0.45rem", padding: "0.55rem 1.1rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
                   <PlusIcon /> New Event
                 </button>
                 <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
               </div>
             </div>
-
-            {/* Stats row */}
             <div style={{ display: "flex", gap: "1.5rem", marginTop: "1rem" }}>
               <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.82rem", color: "rgba(255,255,255,0.35)" }}>
                 <span style={{ color: "#C9A84C", fontWeight: 700, fontSize: "1.1rem", fontFamily: "'Cormorant Garamond', serif" }}>{events.length}</span> {events.length === 1 ? "event" : "events"} total
@@ -836,43 +767,77 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
                 </button>
               </div>
             )}
+
             {!loading && !error && events.length > 0 && (
               <div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 80px 100px", gap: "0.5rem", padding: "0.5rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  {["Event", "Date", "Photos", "Videos", "Actions"].map(h => (
+                {/* Table Header */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 70px 70px 160px 110px", gap: "0.5rem", padding: "0.5rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  {["Event", "Date", "Photos", "Videos", "Drive Album", "Actions"].map(h => (
                     <span key={h} style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", fontWeight: 700, color: "rgba(255,255,255,0.25)", letterSpacing: "0.12em", textTransform: "uppercase" }}>{h}</span>
                   ))}
                 </div>
-                {events.map((ev, i) => (
+
+                {/* Table Rows */}
+                {events.map((ev) => (
                   <div
                     key={ev.id}
                     className="event-row"
-                    style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 80px 100px", gap: "0.5rem", padding: "1rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.04)", alignItems: "center" }}>
+                    style={{ display: "grid", gridTemplateColumns: "1fr 130px 70px 70px 160px 110px", gap: "0.5rem", padding: "1rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.04)", alignItems: "center" }}
+                  >
+                    {/* Cell 1 – Event title */}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1rem", fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ev.title}</div>
                       {ev.location && (
                         <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.74rem", color: "rgba(255,255,255,0.3)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>📍 {ev.location}</div>
                       )}
                     </div>
+
+                    {/* Cell 2 – Date */}
                     <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
                       <span style={{ color: "rgba(201,168,76,0.5)" }}><CalendarIcon /></span>
                       <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.45)" }}>{formatDate(ev.event_date)}</span>
                     </div>
+
+                    {/* Cell 3 – Photos */}
                     <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", fontWeight: 700, color: "#C9A84C" }}>
                       {ev.total_photos ?? "—"}
                       <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.65rem", color: "rgba(255,255,255,0.25)", marginLeft: 3, fontWeight: 400 }}>ph</span>
                     </div>
+
+                    {/* Cell 4 – Videos */}
                     <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", fontWeight: 700, color: "rgba(201,168,76,0.6)" }}>
                       {ev.total_videos ?? "—"}
                       <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.65rem", color: "rgba(255,255,255,0.25)", marginLeft: 3, fontWeight: 400 }}>vid</span>
                     </div>
+
+                    {/* Cell 5 – Drive Album link (wider, shows URL preview) */}
+                    <div style={{ minWidth: 0 }}>
+                      {ev.drive_link ? (
+                        <a
+                          href={ev.drive_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={ev.drive_link}
+                          style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.3rem 0.75rem", borderRadius: 5, background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", textDecoration: "none", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.66rem", letterSpacing: "0.06em", textTransform: "uppercase", transition: "all 0.2s", whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%", textOverflow: "ellipsis" }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.2)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.1)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)"; }}
+                        >
+                          📁 View Album
+                        </a>
+                      ) : (
+                        <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.75rem", color: "rgba(255,255,255,0.2)", fontStyle: "italic" }}>No link set</span>
+                      )}
+                    </div>
+
+                    {/* Cell 6 – Actions */}
                     <div style={{ display: "flex", gap: "0.45rem" }}>
                       <button
                         onClick={() => setEditingEvent(ev)}
                         title="Edit event"
                         style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(201,168,76,0.07)", border: "1px solid rgba(201,168,76,0.2)", color: "#C9A84C", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
                         onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.18)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.07)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.2)"; }}>
+                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.07)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.2)"; }}
+                      >
                         <EditIcon />
                       </button>
                       <button
@@ -880,7 +845,8 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
                         title="Delete event"
                         style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.2)", color: "rgba(220,38,38,0.7)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
                         onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.18)"; e.currentTarget.style.borderColor = "#dc2626"; e.currentTarget.style.color = "#fca5a5"; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(220,38,38,0.07)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.2)"; e.currentTarget.style.color = "rgba(220,38,38,0.7)"; }}>
+                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(220,38,38,0.07)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.2)"; e.currentTarget.style.color = "rgba(220,38,38,0.7)"; }}
+                      >
                         <TrashIcon />
                       </button>
                     </div>
@@ -900,31 +866,13 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
       </div>
 
       {showCreateForm && (
-        <EventFormModal
-          event={null}
-          onClose={() => setShowCreateForm(false)}
-          onSaved={handleSaved}
-          showToast={showToast}
-          token={token}
-        />
+        <EventFormModal event={null} onClose={() => setShowCreateForm(false)} onSaved={handleSaved} showToast={showToast} token={token} />
       )}
       {editingEvent && (
-        <EventFormModal
-          event={editingEvent}
-          onClose={() => setEditingEvent(null)}
-          onSaved={handleSaved}
-          showToast={showToast}
-          token={token}
-        />
+        <EventFormModal event={editingEvent} onClose={() => setEditingEvent(null)} onSaved={handleSaved} showToast={showToast} token={token} />
       )}
       {deletingEvent && (
-        <DeleteEventModal
-          event={deletingEvent}
-          onClose={() => setDeletingEvent(null)}
-          onDeleted={handleDeleted}
-          showToast={showToast}
-          token={token}
-        />
+        <DeleteEventModal event={deletingEvent} onClose={() => setDeletingEvent(null)} onDeleted={handleDeleted} showToast={showToast} token={token} />
       )}
     </>
   );
@@ -985,7 +933,6 @@ function UploadModal({ events, onClose, onUploaded, showToast, token }) {
           </div>
           <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
         </div>
-
         <div style={{ marginBottom: "1rem" }}>
           <label style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.12em", textTransform: "uppercase", display: "block", marginBottom: "0.5rem" }}>Select Event</label>
           <select value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)} style={{ width: "100%", padding: "0.65rem 0.9rem", background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#fff", fontFamily: "'DM Sans', sans-serif", fontSize: "0.88rem", cursor: "pointer", outline: "none" }}>
@@ -994,7 +941,6 @@ function UploadModal({ events, onClose, onUploaded, showToast, token }) {
             ))}
           </select>
         </div>
-
         <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
           {["photo", "video"].map(t => (
             <button key={t} onClick={() => setFileType(t)} style={{ flex: 1, padding: "0.55rem", borderRadius: 6, border: "1px solid", borderColor: fileType === t ? "#C9A84C" : "rgba(255,255,255,0.1)", background: fileType === t ? "rgba(201,168,76,0.1)" : "transparent", color: fileType === t ? "#C9A84C" : "rgba(255,255,255,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s" }}>
@@ -1002,7 +948,6 @@ function UploadModal({ events, onClose, onUploaded, showToast, token }) {
             </button>
           ))}
         </div>
-
         <div
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -1026,13 +971,11 @@ function UploadModal({ events, onClose, onUploaded, showToast, token }) {
             </>
           )}
         </div>
-
         {file && (
           <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.35)", marginBottom: "1rem" }}>
             {file.name} · {formatFileSize(file.size)}
           </div>
         )}
-
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
             Cancel
@@ -1079,25 +1022,21 @@ function Lightbox({ items, startIndex, onClose, onDelete, canDelete, token }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.97)", backdropFilter: "blur(24px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease" }}>
       <button onClick={onClose} style={{ position: "absolute", top: 20, right: 20, width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", fontSize: "1.1rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10 }}>✕</button>
-
       <div style={{ position: "absolute", top: 24, left: "50%", transform: "translateX(-50%)", fontFamily: "'Syne', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.35)", letterSpacing: "0.15em", zIndex: 10 }}>
         {current + 1} / {items.length}
       </div>
-
       {canDelete && (
         <button onClick={e => { e.stopPropagation(); handleDelete(); }} disabled={deleting} style={{ position: "absolute", top: 20, right: 80, height: 44, paddingInline: "1rem", borderRadius: 6, background: confirmDelete ? "rgba(220,38,38,0.3)" : "rgba(255,255,255,0.06)", border: `1px solid ${confirmDelete ? "#dc2626" : "rgba(255,255,255,0.12)"}`, color: confirmDelete ? "#fca5a5" : "rgba(255,255,255,0.45)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", zIndex: 10, transition: "all 0.2s" }}>
           {deleting ? <Spinner size={14} color="#fca5a5" /> : <TrashIcon />}
           {confirmDelete ? "Confirm Delete" : "Delete"}
         </button>
       )}
-
       <button onClick={e => { e.stopPropagation(); setCurrent(c => (c - 1 + items.length) % items.length); setConfirmDelete(false); }} style={{ position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)", width: 52, height: 52, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, transition: "all 0.25s" }}>
         <ChevronLeft />
       </button>
       <button onClick={e => { e.stopPropagation(); setCurrent(c => (c + 1) % items.length); setConfirmDelete(false); }} style={{ position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)", width: 52, height: 52, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, transition: "all 0.25s" }}>
         <ChevronRight />
       </button>
-
       <div onClick={e => e.stopPropagation()} style={{ position: "relative", maxWidth: "min(900px, 90vw)", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
         {isVideo ? (
           <video key={item.storage_path} src={item.storage_path} controls autoPlay style={{ maxWidth: "min(900px, 88vw)", maxHeight: "78vh", display: "block", borderRadius: 10, border: "1px solid rgba(201,168,76,0.15)" }} />
@@ -1112,9 +1051,19 @@ function Lightbox({ items, startIndex, onClose, onDelete, canDelete, token }) {
             <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.4)", marginLeft: "auto" }}>{formatDate(item.created_at)}</span>
           </div>
           {item.file_size && <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.25)", marginTop: "0.3rem" }}>{formatFileSize(item.file_size)}</div>}
+          {/* Drive link in lightbox */}
+          {item.event_drive_link && (
+            <div style={{ marginTop: "0.65rem" }}>
+              <a href={item.event_drive_link} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", padding: "0.4rem 1rem", background: "rgba(201,168,76,0.15)", border: "1px solid rgba(201,168,76,0.4)", borderRadius: 5, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", color: "#C9A84C", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.25)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.15)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; }}>
+                📁 View Full Album on Drive <ExternalLinkIcon />
+              </a>
+            </div>
+          )}
         </div>
       </div>
-
       <div style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", display: "flex", gap: "0.4rem", maxWidth: "min(700px, 90vw)", overflowX: "auto", padding: "0 0.5rem" }}>
         {items.map((it, i) => (
           <div key={it.id} onClick={e => { e.stopPropagation(); setCurrent(i); setConfirmDelete(false); }} style={{ width: 54, height: 38, borderRadius: 5, overflow: "hidden", flexShrink: 0, cursor: "pointer", border: `1.5px solid ${i === current ? "#C9A84C" : "rgba(255,255,255,0.1)"}`, opacity: i === current ? 1 : 0.45, transition: "all 0.2s" }}>
@@ -1122,7 +1071,6 @@ function Lightbox({ items, startIndex, onClose, onDelete, canDelete, token }) {
           </div>
         ))}
       </div>
-
       <div style={{ position: "absolute", bottom: 70, right: 20, fontFamily: "'DM Sans', sans-serif", fontSize: "0.7rem", color: "rgba(255,255,255,0.2)", letterSpacing: "0.08em" }}>← → arrow keys</div>
     </div>
   );
@@ -1148,52 +1096,28 @@ function Navbar({ onUploadClick, onEventsClick, isAuthenticated, user, onLogout,
     { label: "Results", href: "/results" },
   ];
 
-  const handleUpload = () => {
-    if (!isAuthenticated) {
-      onLoginClick("upload");
-    } else {
-      onUploadClick();
-    }
-  };
-
-  const handleEvents = () => {
-    if (!isAuthenticated) {
-      onLoginClick("events");
-    } else {
-      onEventsClick();
-    }
-  };
+  const handleUpload = () => { if (!isAuthenticated) { onLoginClick("upload"); } else { onUploadClick(); } };
+  const handleEvents = () => { if (!isAuthenticated) { onLoginClick("events"); } else { onEventsClick(); } };
 
   return (
     <>
       <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 500, background: scrolled ? "rgba(10,10,20,0.94)" : "rgba(10,10,20,0.6)", backdropFilter: "blur(20px)", borderBottom: scrolled ? "1px solid rgba(201,168,76,0.12)" : "1px solid rgba(255,255,255,0.04)", transition: "all 0.5s", animation: mounted ? "navReveal 0.8s cubic-bezier(0.16,1,0.3,1)" : "none", maxWidth: "100vw", overflow: "hidden" }}>
         <div style={{ maxWidth: 1320, margin: "0 auto", padding: "0 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", height: 74 }}>
           <a href="#home" style={{ display: "flex", alignItems: "center", gap: "0.75rem", textDecoration: "none" }}>
-  <div style={{ width: 200, height: 86, display: "flex", alignItems: "center", justifyContent: "center", overflow: "visible" }}>
-    <img
-      src="/media/logo4.png"
-      alt="ONE4ONE"
-      style={{ width: "100%", height: "100%", objectFit: "contain" }}
-      onError={e => {
-        e.target.style.display = "none";
-        e.target.parentNode.innerHTML = '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:1.1rem;color:#C9A84C;letter-spacing:0.05em">1·4·1</span>';
-      }}
-    />
-  </div>
-</a>
-
+            <div style={{ width: 200, height: 86, display: "flex", alignItems: "center", justifyContent: "center", overflow: "visible" }}>
+              <img src="/media/logo4.png" alt="ONE4ONE" style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:1.1rem;color:#C9A84C;letter-spacing:0.05em">1·4·1</span>'; }} />
+            </div>
+          </a>
           <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: "2.5rem" }}>
             {links.map(l => (
               <a key={l.label} href={l.href} className="nav-link" style={{ position: "relative", fontFamily: "'Syne', sans-serif", fontSize: "0.8rem", fontWeight: 600, color: l.href === "/gallery" ? "#C9A84C" : "rgba(255,255,255,0.75)", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "color 0.2s" }}
                 onMouseEnter={e => e.target.style.color = "#C9A84C"}
                 onMouseLeave={e => e.target.style.color = l.href === "/gallery" ? "#C9A84C" : "rgba(255,255,255,0.75)"}>{l.label}</a>
             ))}
-
             {isAuthenticated ? (
               <>
-                <button
-                  onClick={handleEvents}
-                  style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+                <button onClick={handleEvents} style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.1)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.color = "#C9A84C"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}>
                   <CalendarIcon /> Events
@@ -1214,23 +1138,17 @@ function Navbar({ onUploadClick, onEventsClick, isAuthenticated, user, onLogout,
               </>
             ) : (
               <>
-                <button
-                  onClick={() => onLoginClick("events")}
-                  style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+                <button onClick={() => onLoginClick("events")} style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.1)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.color = "#C9A84C"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}>
                   <CalendarIcon /> Events
                 </button>
-                <button
-                  onClick={() => onLoginClick("upload")}
-                  style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
+                <button onClick={() => onLoginClick("upload")} style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", padding: "0.55rem 1.1rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.2s" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.18)"; e.currentTarget.style.borderColor = "#C9A84C"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.08)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)"; }}>
                   <UploadIcon /> Upload
                 </button>
-                <button
-                  onClick={() => onLoginClick("login")}
-                  style={{ background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.6rem 1.4rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.76rem", border: "none", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 4px 16px rgba(201,168,76,0.3)" }}>
+                <button onClick={() => onLoginClick("login")} style={{ background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.6rem 1.4rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.76rem", border: "none", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 4px 16px rgba(201,168,76,0.3)" }}>
                   Admin Login
                 </button>
               </>
@@ -1239,7 +1157,6 @@ function Navbar({ onUploadClick, onEventsClick, isAuthenticated, user, onLogout,
               Contact
             </a>
           </div>
-
           <button className="mobile-menu-btn" onClick={() => setMenuOpen(o => !o)} style={{ flexDirection: "column", justifyContent: "center", alignItems: "flex-end", gap: 5, width: 44, height: 44, background: "transparent", border: "none", cursor: "pointer", padding: "0.5rem" }}>
             <span style={{ display: "block", width: 24, height: 2, background: "#C9A84C", borderRadius: 2, transition: "all 0.3s", transform: menuOpen ? "translateY(7px) rotate(45deg)" : "none" }} />
             <span style={{ display: "block", width: 18, height: 2, background: "#C9A84C", borderRadius: 2, transition: "all 0.3s", opacity: menuOpen ? 0 : 1 }} />
@@ -1254,12 +1171,8 @@ function Navbar({ onUploadClick, onEventsClick, isAuthenticated, user, onLogout,
         ))}
         {isAuthenticated ? (
           <>
-            <button onClick={() => { setMenuOpen(false); onEventsClick(); }} style={{ display: "block", width: "100%", marginTop: "1rem", padding: "0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Manage Events
-            </button>
-            <button onClick={() => { setMenuOpen(false); onUploadClick(); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.75rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Upload Media
-            </button>
+            <button onClick={() => { setMenuOpen(false); onEventsClick(); }} style={{ display: "block", width: "100%", marginTop: "1rem", padding: "0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>Manage Events</button>
+            <button onClick={() => { setMenuOpen(false); onUploadClick(); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.75rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>Upload Media</button>
             <div style={{ marginTop: "1rem", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5rem 0" }}>
               <span style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.6)" }}>{user?.username}</span>
               <button onClick={() => { setMenuOpen(false); onLogout(); }} style={{ background: "none", border: "1px solid rgba(220,38,38,0.3)", color: "#fca5a5", padding: "0.3rem 0.8rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", cursor: "pointer" }}>Logout</button>
@@ -1267,15 +1180,9 @@ function Navbar({ onUploadClick, onEventsClick, isAuthenticated, user, onLogout,
           </>
         ) : (
           <>
-            <button onClick={() => { setMenuOpen(false); onLoginClick("events"); }} style={{ display: "block", width: "100%", marginTop: "1rem", padding: "0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Manage Events
-            </button>
-            <button onClick={() => { setMenuOpen(false); onLoginClick("upload"); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.75rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Upload Media
-            </button>
-            <button onClick={() => { setMenuOpen(false); onLoginClick("login"); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", border: "none", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Admin Login
-            </button>
+            <button onClick={() => { setMenuOpen(false); onLoginClick("events"); }} style={{ display: "block", width: "100%", marginTop: "1rem", padding: "0.75rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>Manage Events</button>
+            <button onClick={() => { setMenuOpen(false); onLoginClick("upload"); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.75rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>Upload Media</button>
+            <button onClick={() => { setMenuOpen(false); onLoginClick("login"); }} style={{ display: "block", width: "100%", marginTop: "0.6rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", border: "none", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>Admin Login</button>
           </>
         )}
         <a href="/#contact" onClick={() => setMenuOpen(false)} style={{ display: "block", marginTop: "0.6rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.85rem", textDecoration: "none", textAlign: "center", letterSpacing: "0.08em", textTransform: "uppercase" }}>Contact Us</a>
@@ -1371,13 +1278,67 @@ function StatsBar({ totalPhotos, totalVideos, totalEvents, showing, loading }) {
   );
 }
 
+// ── View Album Button (standalone reusable) ───────────────────────────────────
+// Prominent banner shown above each event's photos in the grid
+function ViewAlbumBanner({ eventName, driveLink, photoCount }) {
+  if (!driveLink) return null;
+  return (
+    <a
+      href={driveLink}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={e => e.stopPropagation()}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "1rem",
+        padding: "0.85rem 1.25rem",
+        background: "linear-gradient(135deg, rgba(201,168,76,0.12) 0%, rgba(201,168,76,0.06) 100%)",
+        border: "1px solid rgba(201,168,76,0.35)",
+        borderRadius: 8,
+        textDecoration: "none",
+        transition: "all 0.25s",
+        marginBottom: "0.85rem",
+        flexWrap: "wrap",
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.background = "linear-gradient(135deg, rgba(201,168,76,0.22) 0%, rgba(201,168,76,0.12) 100%)";
+        e.currentTarget.style.borderColor = "#C9A84C";
+        e.currentTarget.style.boxShadow = "0 0 20px rgba(201,168,76,0.15)";
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = "linear-gradient(135deg, rgba(201,168,76,0.12) 0%, rgba(201,168,76,0.06) 100%)";
+        e.currentTarget.style.borderColor = "rgba(201,168,76,0.35)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <span style={{ fontSize: "1.3rem" }}>📁</span>
+        <div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", color: "#C9A84C", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.1rem" }}>
+            View Full Album on Google Drive
+          </div>
+          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.45)" }}>
+            {photoCount > 0 ? `See all ${photoCount}+ photos from ${eventName}` : `All photos from ${eventName}`}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", padding: "0.45rem 1rem", background: "rgba(201,168,76,0.85)", borderRadius: 5, color: "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase", flexShrink: 0 }}>
+        Open Album <ExternalLinkIcon />
+      </div>
+    </a>
+  );
+}
+
 // ── Gallery Grid ──────────────────────────────────────────────────────────────
 function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, showToast, isAuthenticated, token }) {
   const [ref, visible] = useInView();
   const [activeFilter, setActiveFilter] = useState("All");
   const [activeEventId, setActiveEventId] = useState("all");
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  const [layout, setLayout] = useState("masonry");
+  // ── CHANGE 1: default layout is now "grid" ──
+  const [layout, setLayout] = useState("grid");
 
   const labelSet = new Set(events.map(e => guessLabel(e)));
   const FILTERS = ["All", ...Array.from(labelSet)];
@@ -1388,12 +1349,24 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
     return matchLabel && matchEvent;
   });
 
+  // Group media by event for the "by event" views
   const byEvent = filtered.reduce((acc, item) => {
     const key = item.event_id;
-    if (!acc[key]) acc[key] = { name: item.event_title, items: [] };
+    if (!acc[key]) {
+      const ev = events.find(e => e.id === key);
+      const liveEvent = events.find(e => e.id === key);
+acc[key] = {
+  name: item.event_title,
+  items: [],
+  drive_link: liveEvent?.drive_link || item.event_drive_link || null,
+};
+    }
     acc[key].items.push(item);
     return acc;
   }, {});
+
+  // For grid view: group by event so we can show the album banner per event
+  const byEventForGrid = Object.entries(byEvent);
 
   const openLightbox = (item) => {
     const idx = filtered.findIndex(f => f.id === item.id);
@@ -1427,7 +1400,7 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
   return (
     <section ref={ref} style={{ padding: "3rem 1.5rem 6rem", background: "#0d0d1a", minHeight: "60vh" }}>
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
-
+        {/* ── Filters & Layout Toggles ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "2.5rem", flexWrap: "wrap", gap: "1.25rem", opacity: visible ? 1 : 0, transition: "all 0.6s" }}>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
             {FILTERS.map(f => (
@@ -1449,7 +1422,6 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
               </>
             )}
           </div>
-
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             <button onClick={onRefresh} title="Refresh gallery" style={{ width: 36, height: 36, borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.35)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; e.currentTarget.style.color = "#C9A84C"; }}
@@ -1480,26 +1452,65 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
           </div>
         )}
 
+        {/* ── MASONRY VIEW ── */}
         {!loading && layout === "masonry" && filtered.length > 0 && (
-          <div style={{ columns: "3 280px", gap: "1rem" }}>
-            {filtered.map((item, i) => (
-              <MasonryItem key={item.id} item={item} index={i} visible={visible} onClick={() => openLightbox(item)} />
+          <div>
+            {/* Show album banners at top when viewing all events */}
+            {activeEventId === "all" && byEventForGrid.map(([eventId, group]) => (
+              group.drive_link ? (
+                <ViewAlbumBanner
+                  key={eventId}
+                  eventName={group.name}
+                  driveLink={group.drive_link}
+                  photoCount={group.items.length}
+                />
+              ) : null
             ))}
+            <div style={{ columns: "3 280px", gap: "1rem" }}>
+              {filtered.map((item, i) => (
+                <MasonryItem key={item.id} item={item} index={i} visible={visible} onClick={() => openLightbox(item)} />
+              ))}
+            </div>
           </div>
         )}
 
+        {/* ── GRID VIEW (default) — grouped by event with album banner per group ── */}
         {!loading && layout === "grid" && filtered.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "1rem" }}>
-            {filtered.map((item, i) => (
-              <GridItem key={item.id} item={item} index={i} visible={visible} onClick={() => openLightbox(item)} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "3rem" }}>
+            {byEventForGrid.map(([eventId, group]) => (
+              <div key={eventId}>
+                {/* Event heading row */}
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+                  <div style={{ width: 3, height: 26, background: "#C9A84C", borderRadius: 2, flexShrink: 0 }} />
+                  <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.5rem", fontWeight: 700, color: "#fff" }}>{group.name}</h3>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", color: "rgba(255,255,255,0.3)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                    {group.items.length} {group.items.length === 1 ? "File" : "Files"}
+                  </span>
+                </div>
+
+                {/* ── CHANGE 2: Prominent "View Full Album" banner under each event heading ── */}
+                <ViewAlbumBanner
+                  eventName={group.name}
+                  driveLink={group.drive_link}
+                  photoCount={group.items.length}
+                />
+
+                {/* Photo grid for this event */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "1rem" }}>
+                  {group.items.map((item, i) => (
+                    <GridItem key={item.id} item={item} index={i} visible={visible} onClick={() => openLightbox(item)} />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}
 
+        {/* ── FEATURED VIEW ── */}
         {!loading && layout === "featured" && filtered.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "4rem" }}>
-            {Object.entries(byEvent).map(([eventId, group]) => (
-              <EventGroup key={eventId} name={group.name} items={group.items} visible={visible} onOpen={openLightbox} />
+            {byEventForGrid.map(([eventId, group]) => (
+              <EventGroup key={eventId} name={group.name} items={group.items} driveLink={group.drive_link} visible={visible} onOpen={openLightbox} />
             ))}
           </div>
         )}
@@ -1519,6 +1530,7 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
   );
 }
 
+// ── Masonry Item ──────────────────────────────────────────────────────────────
 function MasonryItem({ item, index, visible, onClick }) {
   const isVideo = item.file_type === "video" || (item.storage_path || "").match(/\.(mp4|mov|avi|webm)$/i);
   return (
@@ -1540,6 +1552,7 @@ function MasonryItem({ item, index, visible, onClick }) {
   );
 }
 
+// ── Grid Item ─────────────────────────────────────────────────────────────────
 function GridItem({ item, index, visible, onClick }) {
   const isVideo = item.file_type === "video" || (item.storage_path || "").match(/\.(mp4|mov|avi|webm)$/i);
   return (
@@ -1552,26 +1565,33 @@ function GridItem({ item, index, visible, onClick }) {
       )}
       <div className="overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.9) 0%, transparent 55%)" }} />
       {isVideo && <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(0,0,0,0.6)", borderRadius: 4, padding: "0.2rem 0.5rem", fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", color: "rgba(255,255,255,0.7)", fontWeight: 700 }}>VIDEO</div>}
-      <div className="caption" style={{ position: "absolute", bottom: 14, left: 14, right: 14 }}>
+      <div className="caption" style={{ position: "absolute", bottom: 12, left: 12, right: 12 }}>
         <span style={{ background: "rgba(201,168,76,0.9)", color: "#0d0d1a", padding: "0.15rem 0.65rem", borderRadius: 2, fontSize: "0.62rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase", display: "inline-block", marginBottom: "0.35rem" }}>{item.file_type || "photo"}</span>
-        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: "0.95rem", color: "#fff" }}>{item.event_title}</div>
+        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: "0.9rem", color: "#fff" }}>{item.event_title}</div>
       </div>
     </div>
   );
 }
 
-function EventGroup({ name, items, visible, onOpen }) {
+// ── Event Group (Featured view) ───────────────────────────────────────────────
+function EventGroup({ name, items, driveLink, visible, onOpen }) {
   const [ref, vis] = useInView();
   return (
     <div ref={ref}>
-      <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem", opacity: vis ? 1 : 0, transition: "all 0.6s" }}>
-        <div style={{ width: 3, height: 28, background: "#C9A84C", borderRadius: 2 }} />
+      <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1rem", opacity: vis ? 1 : 0, transition: "all 0.6s", flexWrap: "wrap" }}>
+        <div style={{ width: 3, height: 28, background: "#C9A84C", borderRadius: 2, flexShrink: 0 }} />
         <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.75rem", fontWeight: 700, color: "#fff" }}>{name}</h3>
         <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", color: "rgba(255,255,255,0.35)", letterSpacing: "0.1em", textTransform: "uppercase", marginLeft: "0.25rem" }}>{items.length} {items.length === 1 ? "File" : "Files"}</span>
       </div>
+
+      {/* ── CHANGE 3: Prominent album banner in featured view too ── */}
+      <div style={{ marginBottom: "1.25rem", opacity: vis ? 1 : 0, transition: "all 0.6s 0.1s" }}>
+        <ViewAlbumBanner eventName={name} driveLink={driveLink} photoCount={items.length} />
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "0.85rem" }}>
         {items[0] && (
-          <div className="gallery-item" onClick={() => onOpen(items[0])} style={{ position: "relative", borderRadius: 12, overflow: "hidden", aspectRatio: "16/7", cursor: "zoom-in", background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.05)", opacity: vis ? 1 : 0, transition: "all 0.7s 0.05s" }}>
+          <div className="gallery-item" onClick={() => onOpen(items[0])} style={{ position: "relative", borderRadius: 12, overflow: "hidden", aspectRatio: "16/7", cursor: "zoom-in", background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.05)", opacity: vis ? 1 : 0, transition: "all 0.7s 0.15s" }}>
             <img src={items[0].storage_path} alt={items[0].event_title} style={{ width: "100%", height: "100%", objectFit: "cover" }}
               onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = "#1a1a2e"; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:4rem">⛰️</div>`; }} />
             <div className="overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.85) 0%, transparent 50%)" }} />
@@ -1584,7 +1604,7 @@ function EventGroup({ name, items, visible, onOpen }) {
         {items.length > 1 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px,1fr))", gap: "0.85rem" }}>
             {items.slice(1).map((item, i) => (
-              <div key={item.id} className="gallery-item" onClick={() => onOpen(item)} style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "4/3", cursor: "zoom-in", background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.05)", opacity: vis ? 1 : 0, transition: `all 0.6s ${0.12 + i * 0.07}s` }}>
+              <div key={item.id} className="gallery-item" onClick={() => onOpen(item)} style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "4/3", cursor: "zoom-in", background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.05)", opacity: vis ? 1 : 0, transition: `all 0.6s ${0.18 + i * 0.07}s` }}>
                 <img src={item.storage_path} alt={item.event_title} style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i*50+200},18%,12%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.5rem">${FALLBACK_EMOJIS[(i+1) % FALLBACK_EMOJIS.length]}</div>`; }} />
                 <div className="overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.88) 0%, transparent 55%)" }} />
@@ -1658,11 +1678,10 @@ export default function GalleryPage() {
   const [showEventsManager, setShowEventsManager] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Auth state
   const [authToken, setAuthToken] = useState(null);
   const [authUser, setAuthUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [pendingAction, setPendingAction] = useState(null); // 'upload', 'events', 'login'
+  const [pendingAction, setPendingAction] = useState(null);
 
   const showToast = useCallback((message, type = "success") => {
     setToast({ message, type, id: Date.now() });
@@ -1689,7 +1708,10 @@ export default function GalleryPage() {
           const files = result.value.media_files || [];
           const enriched = files.map(f => ({
             ...f,
+            event_id: eventList[i].id,
             event_title: eventList[i].title,
+            // ── Ensure drive_link is passed through from the event object ──
+            event_drive_link: eventList[i].drive_link || null,
           }));
           combinedMedia = [...combinedMedia, ...enriched];
           totalPhotos += files.filter(f => f.file_type === "photo").length;
@@ -1708,9 +1730,7 @@ export default function GalleryPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadGallery();
-  }, [loadGallery]);
+  useEffect(() => { loadGallery(); }, [loadGallery]);
 
   const handleUploaded = useCallback((eventId, newMedia) => {
     const event = events.find(e => e.id === eventId);
@@ -1718,6 +1738,7 @@ export default function GalleryPage() {
       ...newMedia,
       event_id: eventId,
       event_title: event?.title || "Event",
+      event_drive_link: event?.drive_link || null,
       file_type: newMedia.file_type || "photo",
       created_at: new Date().toISOString(),
     };
@@ -1735,20 +1756,14 @@ export default function GalleryPage() {
     });
   }, []);
 
-  const handleEventsChanged = useCallback(() => {
-    loadGallery();
-  }, [loadGallery]);
+  const handleEventsChanged = useCallback(() => { loadGallery(); }, [loadGallery]);
 
   const handleLoginSuccess = ({ token, user }) => {
     setAuthToken(token);
     setAuthUser(user);
     setShowAuthModal(false);
-    // Execute pending action
-    if (pendingAction === "upload") {
-      setShowUpload(true);
-    } else if (pendingAction === "events") {
-      setShowEventsManager(true);
-    }
+    if (pendingAction === "upload") setShowUpload(true);
+    else if (pendingAction === "events") setShowEventsManager(true);
     setPendingAction(null);
   };
 
