@@ -1,6 +1,10 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 
+// ── Shared config ─────────────────────────────────────────────────────────────
+const BASE_URL = "https://backone.one4one.co";
+const REGISTER_URL = "https://forms.gle/89SRrpkirDEChGZy7"; // Same link used everywhere "Register Now" appears
+
 // ── CSS Injection ─────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -380,16 +384,14 @@ function Navbar() {
   );
 }
 
-// ── Hero Slideshow (Dynamic — fetches events + photos from DB) ────────────────
-// Builds slides from:
-//   1. Upcoming events   → "Registration Open" slides
-//   2. Past events       → "Completed" slides
-//   3. Gallery photos    → "Highlights" slides (fills remaining slots, max 2)
-// Falls back to hardcoded FALLBACK_SLIDES if API returns nothing.
-// Everything else (layout, animations, stats, arrows, dots) is unchanged.
+// ── Hero Slideshow (Dynamic — fetches UPCOMING events only from DB) ───────────
+// Builds slides ONLY from upcoming events (event_date >= now). Past events and
+// gallery highlights are intentionally excluded so the hero can be used as a
+// dedicated advertising space for whatever is coming up next.
+// Falls back to hardcoded FALLBACK_SLIDES if the API returns no upcoming events.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Hardcoded fallback (your original slides — used only if API is empty) ─────
+// ── Hardcoded fallback (used only if API has no upcoming events) ──────────────
 const FALLBACK_SLIDES = [
   {
     type: "upcoming",
@@ -400,48 +402,9 @@ const FALLBACK_SLIDES = [
     tag: "Registration Open",
     tagColor: "#C9A84C",
     img: "/media/upcoming.png",
-    cta: { text: "Register Now", href: "#contact" },
+    cta: { text: "Register Now", href: REGISTER_URL, external: true },
     accentColor: "#C9A84C",
     overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.75) 0%, rgba(13,13,26,0.3) 60%, rgba(201,168,76,0.1) 100%)",
-  },
-  {
-    type: "past",
-    label: "PAST EVENT · JAN 2026",
-    title: "Mt. Kenya\nDay Dash",
-    subtitle: "Naromoru Route · Hiking",
-    date: "24 Jan 2026",
-    tag: "Completed",
-    tagColor: "#22c55e",
-    img: "/media/events/mtkd - 5.png",
-    cta: { text: "View Gallery", href: "#gallery" },
-    accentColor: "#4ade80",
-    overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.8) 0%, rgba(13,13,26,0.35) 60%, rgba(74,222,128,0.08) 100%)",
-  },
-  {
-    type: "highlight",
-    label: "ADVENTURE",
-    title: "Summit\nApproach",
-    subtitle: "Mt. Kenya · Breathtaking Views",
-    date: "Jan 2026",
-    tag: "Highlights",
-    tagColor: "#a78bfa",
-    img: "/media/events/mtkd - 3.png",
-    cta: { text: "See All Photos", href: "#gallery" },
-    accentColor: "#a78bfa",
-    overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.82) 0%, rgba(13,13,26,0.25) 70%, rgba(167,139,250,0.08) 100%)",
-  },
-  {
-    type: "highlight",
-    label: "COMMUNITY",
-    title: "Better\nTogether",
-    subtitle: "Supporting Athletes Across Africa",
-    date: "Est. 2024",
-    tag: "ONE4ONE",
-    tagColor: "#C9A84C",
-    img: "/media/events/mtkd - 1.png",
-    cta: { text: "About Us", href: "#about" },
-    accentColor: "#C9A84C",
-    overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.85) 0%, rgba(13,13,26,0.3) 65%, rgba(201,168,76,0.1) 100%)",
   },
 ];
 
@@ -467,15 +430,15 @@ function heroSubtitle(event) {
   return parts.join(" · ") || "ONE4ONE Event";
 }
 
-// ── Build dynamic slides from API data ───────────────────────────────────────
-function buildSlides(events, photos) {
+// ── Build dynamic slides from API data — UPCOMING EVENTS ONLY ────────────────
+function buildSlides(events) {
   const now = new Date();
   const slides = [];
 
-  const upcoming = events.filter(e => e.event_date && new Date(e.event_date) >= now);
-  const past     = events.filter(e => !e.event_date || new Date(e.event_date) < now);
+  const upcoming = events
+    .filter(e => e.event_date && new Date(e.event_date) >= now)
+    .sort((a, b) => new Date(a.event_date) - new Date(b.event_date)); // soonest first
 
-  // 1. Upcoming events
   upcoming.forEach(ev => {
     slides.push({
       type: "upcoming",
@@ -486,101 +449,22 @@ function buildSlides(events, photos) {
       tag: "Registration Open",
       tagColor: "#C9A84C",
       img: ev.cover_image || "",
-      cta: { text: "Register Now", href: "#contact" },
+      cta: { text: "Register Now", href: REGISTER_URL, external: true },
       accentColor: "#C9A84C",
       overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.75) 0%, rgba(13,13,26,0.3) 60%, rgba(201,168,76,0.1) 100%)",
-    });
-  });
-
-  // 2. Past events (most recent first, max 2)
-  past.slice(0, 2).forEach(ev => {
-    slides.push({
-      type: "past",
-      label: `PAST EVENT · ${heroFormatDate(ev.event_date)}`,
-      title: heroTitleCase(ev.title),
-      subtitle: heroSubtitle(ev),
-      date: heroFormatDate(ev.event_date),
-      tag: "Completed",
-      tagColor: "#22c55e",
-      img: ev.cover_image || "",
-      cta: { text: "View Gallery", href: "#gallery" },
-      accentColor: "#4ade80",
-      overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.8) 0%, rgba(13,13,26,0.35) 60%, rgba(74,222,128,0.08) 100%)",
-    });
-  });
-
-  // 3. Fill remaining slots with gallery highlight photos (max 2)
-  const photoSlots = Math.max(0, 4 - slides.length);
-  // Pick photos from different events for variety
-  const picked = [];
-  const seen = new Set();
-  for (const p of photos) {
-    if (picked.length >= photoSlots) break;
-    if (!seen.has(p.event_id)) {
-      seen.add(p.event_id);
-      picked.push(p);
-    }
-  }
-
-  const highlightColors = ["#a78bfa", "#60a5fa", "#f472b6"];
-  picked.forEach((photo, i) => {
-    const color = highlightColors[i % highlightColors.length];
-    slides.push({
-      type: "highlight",
-      label: "HIGHLIGHTS",
-      title: heroTitleCase(photo.event_title || "ONE4ONE"),
-      subtitle: photo.event_location ? `${photo.event_title} · ${photo.event_location}` : (photo.event_title || "ONE4ONE"),
-      date: photo.event_date ? heroFormatDate(photo.event_date) : "",
-      tag: "Gallery",
-      tagColor: color,
-      img: photo.storage_path || "",
-      cta: { text: "See All Photos", href: "#gallery" },
-      accentColor: color,
-      overlayColor: `linear-gradient(135deg, rgba(13,13,26,0.82) 0%, rgba(13,13,26,0.25) 70%, ${color}14 100%)`,
     });
   });
 
   return slides.length > 0 ? slides : null; // null → use fallback
 }
 
-// ── Fetch hero data (events + a handful of photos) ────────────────────────────
+// ── Fetch hero data (upcoming events only — no photos needed anymore) ────────
 async function fetchHeroData() {
-  // Events
   const evRes = await fetch(`${BASE_URL}/api/events?page=1&limit=50`);
   if (!evRes.ok) throw new Error(`Events fetch failed: ${evRes.status}`);
   const evJson = await evRes.json();
   const events = evJson.status === "success" ? (evJson.data.events || []) : [];
-
-  // Photos — fetch from all events in parallel, take newest first
-  const mediaResults = await Promise.allSettled(
-    events.map(ev =>
-      fetch(`${BASE_URL}/api/events/${ev.id}/media?page=1&limit=20`)
-        .then(r => r.json())
-        .then(j => ({
-          event: ev,
-          files: j.status === "success" ? j.data.media_files || [] : [],
-        }))
-    )
-  );
-
-  let photos = [];
-  mediaResults.forEach(result => {
-    if (result.status === "fulfilled") {
-      const { event, files } = result.value;
-      files
-        .filter(f => f.file_type === "photo" && f.storage_path)
-        .forEach(f => photos.push({
-          ...f,
-          event_id: event.id,
-          event_title: event.title,
-          event_date: event.event_date,
-          event_location: event.location,
-        }));
-    }
-  });
-  photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-  return { events, photos };
+  return { events };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -600,8 +484,8 @@ function HeroSlideshow({ onImageClick }) {
 
     (async () => {
       try {
-        const { events, photos } = await fetchHeroData();
-        const dynamic = buildSlides(events, photos);
+        const { events } = await fetchHeroData();
+        const dynamic = buildSlides(events);
         if (!cancelled && dynamic) {
           setSlides(dynamic);
           setCurrent(0);
@@ -634,6 +518,7 @@ function HeroSlideshow({ onImageClick }) {
   }, [current, goTo, slides.length]);
 
   const slide = slides[current] || FALLBACK_SLIDES[0];
+  const multipleSlides = slides.length > 1;
 
   const [ref, statsVisible] = useInView(0.1);
   const stats = [
@@ -714,7 +599,12 @@ function HeroSlideshow({ onImageClick }) {
 
         {/* CTAs */}
         <div key={`cta-${current}`} style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "3.5rem", animation: loaded ? "fadeUp 0.8s 0.45s both cubic-bezier(0.16,1,0.3,1)" : "none" }}>
-          <a href={slide.cta.href} className="btn-primary" style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.85rem 2rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 8px 32px rgba(201,168,76,0.4)" }}>
+          <a
+            href={slide.cta.href}
+            target={slide.cta.external ? "_blank" : undefined}
+            rel={slide.cta.external ? "noopener noreferrer" : undefined}
+            className="btn-primary"
+            style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.85rem 2rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 8px 32px rgba(201,168,76,0.4)" }}>
             {slide.cta.text} <ArrowRight />
           </a>
           <a href="#about" className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.85)", padding: "0.85rem 2rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: "0.82rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", border: "1px solid rgba(255,255,255,0.15)", transition: "all 0.3s", backdropFilter: "blur(8px)" }}>
@@ -735,29 +625,37 @@ function HeroSlideshow({ onImageClick }) {
         </div>
       </div>
 
-      {/* ── Slide nav dots ── */}
-      <div style={{ position: "absolute", right: "2rem", top: "50%", transform: "translateY(-50%)", zIndex: 6, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {slides.map((_, i) => (
-          <button key={i} onClick={() => goTo(i, i > current ? 1 : -1)} style={{ display: "block", width: i === current ? 3 : 2, height: i === current ? 32 : 16, borderRadius: 4, background: i === current ? "#C9A84C" : "rgba(255,255,255,0.3)", border: "none", cursor: "pointer", transition: "all 0.4s cubic-bezier(0.16,1,0.3,1)", padding: 0 }} />
-        ))}
-      </div>
+      {/* ── Slide nav dots (only if more than one upcoming event) ── */}
+      {multipleSlides && (
+        <div style={{ position: "absolute", right: "2rem", top: "50%", transform: "translateY(-50%)", zIndex: 6, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {slides.map((_, i) => (
+            <button key={i} onClick={() => goTo(i, i > current ? 1 : -1)} style={{ display: "block", width: i === current ? 3 : 2, height: i === current ? 32 : 16, borderRadius: 4, background: i === current ? "#C9A84C" : "rgba(255,255,255,0.3)", border: "none", cursor: "pointer", transition: "all 0.4s cubic-bezier(0.16,1,0.3,1)", padding: 0 }} />
+          ))}
+        </div>
+      )}
 
-      {/* ── Prev / Next arrows ── */}
-      <button onClick={() => goTo((current - 1 + slides.length) % slides.length, -1)} style={{ position: "absolute", bottom: "8rem", right: "5rem", zIndex: 6, width: 48, height: 48, borderRadius: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.25s" }}
-        onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.25)"}
-        onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}>
-        <ChevronLeft />
-      </button>
-      <button onClick={() => goTo((current + 1) % slides.length, 1)} style={{ position: "absolute", bottom: "8rem", right: "2rem", zIndex: 6, width: 48, height: 48, borderRadius: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.25s" }}
-        onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.25)"}
-        onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}>
-        <ChevronRight />
-      </button>
+      {/* ── Prev / Next arrows (only if more than one upcoming event) ── */}
+      {multipleSlides && (
+        <>
+          <button onClick={() => goTo((current - 1 + slides.length) % slides.length, -1)} style={{ position: "absolute", bottom: "8rem", right: "5rem", zIndex: 6, width: 48, height: 48, borderRadius: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.25s" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.25)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}>
+            <ChevronLeft />
+          </button>
+          <button onClick={() => goTo((current + 1) % slides.length, 1)} style={{ position: "absolute", bottom: "8rem", right: "2rem", zIndex: 6, width: 48, height: 48, borderRadius: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.25s" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.25)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}>
+            <ChevronRight />
+          </button>
+        </>
+      )}
 
-      {/* ── Progress bar ── */}
-      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(255,255,255,0.1)", zIndex: 6 }}>
-        <div key={current} style={{ height: "100%", background: "linear-gradient(90deg, #C9A84C, #e8c96a)", animation: "lineExpand 6s linear forwards", width: "0%" }} />
-      </div>
+      {/* ── Progress bar (only if more than one upcoming event) ── */}
+      {multipleSlides && (
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(255,255,255,0.1)", zIndex: 6 }}>
+          <div key={current} style={{ height: "100%", background: "linear-gradient(90deg, #C9A84C, #e8c96a)", animation: "lineExpand 6s linear forwards", width: "0%" }} />
+        </div>
+      )}
     </section>
   );
 }
@@ -849,14 +747,10 @@ function WhatWeOrganize() {
   );
 }
 
-// ── Events Section (Drop-in replacement for your homepage Events component)
-// Fetches live events from the same API as the results page,
-// splits them into upcoming / past by date, and renders everything
-// in the same luxury dark aesthetic used across the site.
+// ── Events Section ────────────────────────────────────────────────────────────
+// Fetches live events, splits them into upcoming / past by date, and renders
+// everything in the same luxury dark aesthetic used across the site.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// ── Config (same as results page) ────────────────────────────────────────────
-const BASE_URL = "https://backone.one4one.co";
 
 // ── API helper (mirrors results page) ────────────────────────────────────────
 async function fetchEvents(page = 1, limit = 50) {
@@ -1010,7 +904,7 @@ function UpcomingCard({ event, index, visible, onImageClick }) {
           ))}
         </div>
 
-        <a href="https://forms.gle/89SRrpkirDEChGZy7" target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", padding: "0.85rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 20px rgba(201,168,76,0.3)", transition: "all 0.3s" }}
+        <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", padding: "0.85rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 20px rgba(201,168,76,0.3)", transition: "all 0.3s" }}
           onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 8px 32px rgba(201,168,76,0.45)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
           onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 4px 20px rgba(201,168,76,0.3)"; e.currentTarget.style.transform = "none"; }}>
           Register Now <ArrowRightIcon />
@@ -1225,7 +1119,7 @@ function SectionLabel({ eyebrow, heading, visible, delay = 0 }) {
   );
 }
 
-// ── MAIN COMPONENT (drop this in place of your current Events function) ───────
+// ── MAIN COMPONENT ─────────────────────────────────────────────────────────────
 function Events({ onImageClick, onCertClick }) {
   const [ref, visible] = useInView();
 
@@ -1364,23 +1258,9 @@ function Events({ onImageClick, onCertClick }) {
   );
 }
 
-// ── Gallery (Homepage Section — drop-in replacement) ─────────────────────────
-// Fetches live photos from the DB using the same API pattern as the gallery page.
-// Displays them as an immersive cinematic slideshow with a film-strip thumbnail
-// row at the bottom. The filter buttons, social links, and "View Full Gallery"
-// CTA are all preserved exactly as before.
-// ─────────────────────────────────────────────────────────────────────────────
-
-
-
-// ── API helpers (mirrors gallery page exactly) ────────────────────────────────
-// ── Gallery (Homepage Section — replace your existing Gallery function) ────────
-// Changes from previous version:
-//   1. scrollIntoView replaced with manual scrollLeft on the thumb container
-//      (no more page-level scrolling when slide advances)
-//   2. Slides now crossfade in random order with Ken Burns zoom — matching the
-//      hero section style rather than a linear sequential slideshow
-// Everything else (filters, social links, "View Full Gallery" CTA) is unchanged.
+// ── Gallery ────────────────────────────────────────────────────────────────────
+// Fetches live photos from the DB and displays them as an immersive cinematic
+// slideshow with a film-strip thumbnail row at the bottom.
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function fetchAllGalleryMedia() {
