@@ -1,8 +1,10 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const BASE_URL = "https://backone.one4one.co";
+// Separate host for the bulk-results endpoint (per current backend setup)
+const BULK_UPLOAD_BASE_URL = "http://localhost:8081";
 
 // ── Global CSS ────────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
@@ -94,6 +96,7 @@ const GLOBAL_CSS = `
 
   .tab-btn { transition: all 0.25s; }
   .filter-btn { transition: all 0.25s; }
+  .mode-btn { transition: all 0.25s; }
 
   .skeleton {
     background: linear-gradient(90deg, #1a1a2e 25%, #22223a 50%, #1a1a2e 75%);
@@ -173,6 +176,20 @@ const api = {
     return json.data;
   },
 
+  // Bulk upload: a zipped folder containing many certificates for one event.
+  async bulkUploadResults(eventId, zipFile, token) {
+    const formData = new FormData();
+    formData.append("archive", zipFile);
+    const res = await fetch(`${BASE_URL}/api/events/${eventId}/results`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`Bulk upload failed: ${res.status}`);
+    const json = await res.json().catch(() => ({}));
+    return json;
+  },
+
   async deleteMedia(mediaId, token) {
     const res = await fetch(`${BASE_URL}/api/media/${mediaId}`, {
       method: "DELETE",
@@ -207,6 +224,15 @@ function formatDateShort(dateStr) {
   if (!dateStr) return "";
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// An event counts as "past" (i.e. actually completed) only once its event_date
+// has already occurred relative to right now.
+function isPastEvent(event) {
+  if (!event?.event_date) return false;
+  const eventTime = new Date(event.event_date).getTime();
+  if (Number.isNaN(eventTime)) return false;
+  return eventTime <= Date.now();
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -275,6 +301,20 @@ const FilePdfIcon = () => (
     <line x1="16" y1="13" x2="8" y2="13"/>
     <line x1="16" y1="17" x2="8" y2="17"/>
     <polyline points="10 9 9 9 8 9"/>
+  </svg>
+);
+const FileZipIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <path d="M12 12v1M12 15v1M12 18v1"/>
+    <rect x="10.5" y="9" width="3" height="2"/>
+  </svg>
+);
+const ExternalLinkIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+    <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
   </svg>
 );
 
@@ -392,25 +432,23 @@ function AuthModal({ onClose, onSuccess, showToast }) {
               {loading ? <Spinner size={16} color="#C9A84C" /> : (mode === "login" ? "Sign In" : "Sign Up")}
             </button>
           </div>
-          {/* <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
-            <button type="button" onClick={() => setMode(m => m === "login" ? "signup" : "login")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 4, textDecorationColor: "#C9A84C" }}>
-              {mode === "login" ? "Need an account? Sign up" : "Already have an account? Sign in"}
-            </button>
-          </div> */}
         </form>
       </div>
     </div>
   );
 }
 
-// ── Upload Certificate Modal ──────────────────────────────────────────────────
-function UploadCertModal({ events, onClose, onUploaded, showToast, token }) {
+// ── Upload Certificate Modal (single + bulk) ──────────────────────────────────
+function UploadCertModal({ events, onClose, onUploaded, showToast, token, onRefresh }) {
+  const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [selectedEventId, setSelectedEventId] = useState(events[0]?.id || "");
   const [participantName, setParticipantName] = useState("");
   const [file, setFile] = useState(null);
+  const [zipFile, setZipFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef();
+  const zipRef = useRef();
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -424,11 +462,20 @@ function UploadCertModal({ events, onClose, onUploaded, showToast, token }) {
       return;
     }
     setFile(f);
-    // Auto-fill name from filename if blank
     if (!participantName) {
       const name = f.name.replace(/\.pdf$/i, "").replace(/[-_]/g, " ");
       setParticipantName(name);
     }
+  };
+
+  const handleZipFile = (f) => {
+    if (!f) return;
+    const isZip = f.type === "application/zip" || f.type === "application/x-zip-compressed" || f.name.toLowerCase().endsWith(".zip");
+    if (!isZip) {
+      showToast("Only ZIP files are allowed for bulk upload", "error");
+      return;
+    }
+    setZipFile(f);
   };
 
   const handleDrop = (e) => {
@@ -437,11 +484,16 @@ function UploadCertModal({ events, onClose, onUploaded, showToast, token }) {
     if (f) handleFile(f);
   };
 
+  const handleZipDrop = (e) => {
+    e.preventDefault(); setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleZipFile(f);
+  };
+
   const handleSubmit = async () => {
     if (!file || !selectedEventId) { showToast("Please select an event and a PDF file", "error"); return; }
     setUploading(true);
     try {
-      // We store certificate PDFs as file_type "photo" or a custom type — using "photo" to stay compatible with existing API
       const result = await api.uploadMedia(selectedEventId, file, "pdf", token);
       showToast("Certificate uploaded successfully!", "success");
       onUploaded(selectedEventId, result, participantName, file.name);
@@ -453,15 +505,59 @@ function UploadCertModal({ events, onClose, onUploaded, showToast, token }) {
     }
   };
 
+  const handleBulkSubmit = async () => {
+    if (!zipFile || !selectedEventId) { showToast("Please select an event and a ZIP file", "error"); return; }
+    setUploading(true);
+    try {
+      await api.bulkUploadResults(selectedEventId, zipFile, token);
+      showToast("Bulk certificates uploaded successfully!", "success");
+      if (onRefresh) await onRefresh();
+      onClose();
+    } catch (err) {
+      showToast(err.message || "Bulk upload failed", "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const modeTabStyle = (active) => ({
+    flex: 1,
+    padding: "0.65rem",
+    borderRadius: 6,
+    border: `1px solid ${active ? "rgba(201,168,76,0.5)" : "rgba(255,255,255,0.1)"}`,
+    background: active ? "rgba(201,168,76,0.12)" : "transparent",
+    color: active ? "#C9A84C" : "rgba(255,255,255,0.45)",
+    fontFamily: "'Syne', sans-serif",
+    fontWeight: 700,
+    fontSize: "0.72rem",
+    letterSpacing: "0.07em",
+    textTransform: "uppercase",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.4rem",
+  });
+
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, padding: "2rem", width: "100%", maxWidth: 520, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>
           <div>
             <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.3rem" }}>Admin · Results Manager</div>
-            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.6rem", fontWeight: 700, color: "#fff" }}>Upload Certificate</h3>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.6rem", fontWeight: 700, color: "#fff" }}>Upload Certificate{mode === "bulk" ? "s" : ""}</h3>
           </div>
           <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+        </div>
+
+        {/* Mode toggle: single vs bulk */}
+        <div style={{ display: "flex", gap: "0.6rem", marginBottom: "1.4rem" }}>
+          <button className="mode-btn" onClick={() => setMode("single")} style={modeTabStyle(mode === "single")}>
+            <FilePdfIcon /> Single Certificate
+          </button>
+          <button className="mode-btn" onClick={() => setMode("bulk")} style={modeTabStyle(mode === "bulk")}>
+            <FileZipIcon /> Bulk Upload (ZIP)
+          </button>
         </div>
 
         <FormField label="Select Event" required>
@@ -472,49 +568,95 @@ function UploadCertModal({ events, onClose, onUploaded, showToast, token }) {
           </select>
         </FormField>
 
-        <FormField label="Participant Name">
-          <input
-            value={participantName}
-            onChange={e => setParticipantName(e.target.value)}
-            placeholder="e.g. Christopher Kamau"
-            style={inputStyle}
-          />
-        </FormField>
+        {mode === "single" && (
+          <>
+            <FormField label="Participant Name">
+              <input
+                value={participantName}
+                onChange={e => setParticipantName(e.target.value)}
+                placeholder="e.g. Christopher Kamau"
+                style={inputStyle}
+              />
+            </FormField>
 
-        <div
-          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
-          style={{ border: `2px dashed ${dragOver ? "#C9A84C" : "rgba(201,168,76,0.25)"}`, borderRadius: 10, padding: "1.5rem", textAlign: "center", cursor: "pointer", background: dragOver ? "rgba(201,168,76,0.05)" : "rgba(255,255,255,0.02)", transition: "all 0.2s", marginBottom: "1.25rem", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
-          <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
-          {file ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-              <div style={{ width: 48, height: 48, borderRadius: 10, background: "rgba(201,168,76,0.12)", border: "1px solid rgba(201,168,76,0.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#C9A84C" }}>
-                <FilePdfIcon />
-              </div>
-              <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#C9A84C", fontSize: "0.85rem" }}>{file.name}</div>
-              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.3)" }}>{formatFileSize(file.size)}</div>
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileRef.current?.click()}
+              style={{ border: `2px dashed ${dragOver ? "#C9A84C" : "rgba(201,168,76,0.25)"}`, borderRadius: 10, padding: "1.5rem", textAlign: "center", cursor: "pointer", background: dragOver ? "rgba(201,168,76,0.05)" : "rgba(255,255,255,0.02)", transition: "all 0.2s", marginBottom: "1.25rem", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+              <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+              {file ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 10, background: "rgba(201,168,76,0.12)", border: "1px solid rgba(201,168,76,0.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#C9A84C" }}>
+                    <FilePdfIcon />
+                  </div>
+                  <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#C9A84C", fontSize: "0.85rem" }}>{file.name}</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.3)" }}>{formatFileSize(file.size)}</div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: "2rem", opacity: 0.5 }}>📄</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "rgba(255,255,255,0.45)" }}>
+                    Drop PDF here or <span style={{ color: "#C9A84C", fontWeight: 600 }}>browse</span>
+                  </div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.2)" }}>PDF certificates only</div>
+                </>
+              )}
             </div>
-          ) : (
-            <>
-              <div style={{ fontSize: "2rem", opacity: 0.5 }}>📄</div>
-              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "rgba(255,255,255,0.45)" }}>
-                Drop PDF here or <span style={{ color: "#C9A84C", fontWeight: 600 }}>browse</span>
-              </div>
-              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.2)" }}>PDF certificates only</div>
-            </>
-          )}
-        </div>
 
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-            Cancel
-          </button>
-          <button onClick={handleSubmit} disabled={!file || !selectedEventId || uploading} style={{ flex: 2, padding: "0.75rem", borderRadius: 6, background: file && !uploading ? "linear-gradient(135deg,#C9A84C,#b8962e)" : "rgba(201,168,76,0.2)", color: file && !uploading ? "#0d0d1a" : "rgba(201,168,76,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: file && !uploading ? "pointer" : "not-allowed", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
-            {uploading ? <><Spinner size={16} color="#C9A84C" /> Uploading...</> : <><UploadIcon /> Upload Certificate</>}
-          </button>
-        </div>
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Cancel
+              </button>
+              <button onClick={handleSubmit} disabled={!file || !selectedEventId || uploading} style={{ flex: 2, padding: "0.75rem", borderRadius: 6, background: file && !uploading ? "linear-gradient(135deg,#C9A84C,#b8962e)" : "rgba(201,168,76,0.2)", color: file && !uploading ? "#0d0d1a" : "rgba(201,168,76,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: file && !uploading ? "pointer" : "not-allowed", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+                {uploading ? <><Spinner size={16} color="#C9A84C" /> Uploading...</> : <><UploadIcon /> Upload Certificate</>}
+              </button>
+            </div>
+          </>
+        )}
+
+        {mode === "bulk" && (
+          <>
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleZipDrop}
+              onClick={() => zipRef.current?.click()}
+              style={{ border: `2px dashed ${dragOver ? "#C9A84C" : "rgba(201,168,76,0.25)"}`, borderRadius: 10, padding: "1.5rem", textAlign: "center", cursor: "pointer", background: dragOver ? "rgba(201,168,76,0.05)" : "rgba(255,255,255,0.02)", transition: "all 0.2s", marginBottom: "1rem", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+              <input ref={zipRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" style={{ display: "none" }} onChange={e => handleZipFile(e.target.files[0])} />
+              {zipFile ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 10, background: "rgba(201,168,76,0.12)", border: "1px solid rgba(201,168,76,0.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#C9A84C" }}>
+                    <FileZipIcon />
+                  </div>
+                  <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#C9A84C", fontSize: "0.85rem" }}>{zipFile.name}</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.3)" }}>{formatFileSize(zipFile.size)}</div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: "2rem", opacity: 0.5 }}>🗂️</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "rgba(255,255,255,0.45)" }}>
+                    Drop a ZIP folder here or <span style={{ color: "#C9A84C", fontWeight: 600 }}>browse</span>
+                  </div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.2)" }}>One ZIP containing all PDF certificates for this event</div>
+                </>
+              )}
+            </div>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", marginBottom: "1.25rem", lineHeight: 1.6 }}>
+              Certificate names will be pulled from the files inside the ZIP. The results list will refresh automatically once processing finishes.
+            </p>
+
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Cancel
+              </button>
+              <button onClick={handleBulkSubmit} disabled={!zipFile || !selectedEventId || uploading} style={{ flex: 2, padding: "0.75rem", borderRadius: 6, background: zipFile && !uploading ? "linear-gradient(135deg,#C9A84C,#b8962e)" : "rgba(201,168,76,0.2)", color: zipFile && !uploading ? "#0d0d1a" : "rgba(201,168,76,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: zipFile && !uploading ? "pointer" : "not-allowed", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+                {uploading ? <><Spinner size={16} color="#C9A84C" /> Uploading...</> : <><UploadIcon /> Upload ZIP</>}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -524,7 +666,6 @@ function UploadCertModal({ events, onClose, onUploaded, showToast, token }) {
 function CertModal({ cert, name, onClose, onDelete, canDelete, showToast, token }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  
 
   useEffect(() => {
     const handle = (e) => { if (e.key === "Escape") onClose(); };
@@ -544,13 +685,11 @@ function CertModal({ cert, name, onClose, onDelete, canDelete, showToast, token 
     }
   };
 
-  // Determine if the cert URL is a real URL (API) or a local path
   const certUrl = cert.startsWith("http") ? cert : cert;
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.97)", backdropFilter: "blur(24px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", animation: "fadeIn 0.2s" }}>
       <div onClick={e => e.stopPropagation()} style={{ width: "min(860px, 95vw)", borderRadius: 20, overflow: "hidden", background: "#0d0d1a", border: "1px solid rgba(201,168,76,0.2)", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
-        {/* Header */}
         <div style={{ background: "linear-gradient(135deg, rgba(201,168,76,0.12), rgba(13,13,26,0.95))", padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(201,168,76,0.12)", flexWrap: "wrap", gap: "0.75rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.85rem" }}>
             <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(201,168,76,0.12)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(201,168,76,0.2)", color: "#C9A84C" }}>
@@ -572,12 +711,10 @@ function CertModal({ cert, name, onClose, onDelete, canDelete, showToast, token 
           </div>
         </div>
 
-        {/* PDF Viewer */}
         <div style={{ height: "62vh", background: "#111122", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <iframe src={certUrl} title={`${name} Certificate`} width="100%" height="100%" style={{ border: "none", display: "block" }} />
         </div>
 
-        {/* Footer */}
         <div style={{ background: "#0a0a14", padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid rgba(201,168,76,0.08)", gap: "1rem", flexWrap: "wrap" }}>
           <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.25)", fontSize: "0.76rem", letterSpacing: "0.05em" }}>ESC TO CLOSE</p>
           <a href={certUrl} download target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.7rem 1.5rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase" }}>
@@ -748,7 +885,7 @@ function SearchBar({ value, onChange }) {
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
-        placeholder="Search by participant name or event…"
+        placeholder="Search by event name, date, or participant…"
         style={{ width: "100%", padding: "0.78rem 1rem 0.78rem 2.75rem", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#fff", fontFamily: "'DM Sans', sans-serif", fontSize: "0.88rem", outline: "none", transition: "border-color 0.2s", boxSizing: "border-box" }}
         onFocus={e => e.target.style.borderColor = "rgba(201,168,76,0.5)"}
         onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.1)"}
@@ -969,6 +1106,35 @@ function ResultsSection({ events, certsByEvent, loading, error, onRefresh, onDel
     }
   }, [events]);
 
+  // Event-level search: matches against event title, its formatted/raw date,
+  // AND now also against participant names / filenames of certificates
+  // belonging to that event — so searching "Meliora" surfaces the event even
+  // if the event title itself doesn't contain the term.
+  const filteredEvents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return events;
+    return events.filter(ev => {
+      const titleMatch = (ev.title || "").toLowerCase().includes(q);
+      const shortDate = ev.event_date ? formatDateShort(ev.event_date).toLowerCase() : "";
+      const rawDate = ev.event_date ? String(ev.event_date).toLowerCase() : "";
+      const dateMatch = shortDate.includes(q) || rawDate.includes(q);
+      const certs = certsByEvent[ev.id] || [];
+      const certMatch = certs.some(c =>
+        (c.participantName || "").toLowerCase().includes(q) ||
+        (c.original_filename || "").toLowerCase().includes(q)
+      );
+      return titleMatch || dateMatch || certMatch;
+    });
+  }, [events, search, certsByEvent]);
+
+  // While actively searching, auto-expand every matching event so a
+  // participant/filename match is visible without an extra click.
+  useEffect(() => {
+    if (search.trim() && filteredEvents.length > 0) {
+      setExpandedEventId(filteredEvents[0].id);
+    }
+  }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleDeleteFromModal = async () => {
     if (!certModal) return;
     try {
@@ -1031,28 +1197,51 @@ function ResultsSection({ events, certsByEvent, loading, error, onRefresh, onDel
           </div>
         )}
 
-        {/* No events */}
+        {/* No events at all */}
         {!loading && events.length === 0 && (
           <div style={{ borderRadius: 20, border: "1px dashed rgba(255,255,255,0.08)", padding: "4rem 2rem", textAlign: "center", background: "rgba(255,255,255,0.015)" }}>
             <div style={{ fontSize: "3rem", marginBottom: "1rem", opacity: 0.5 }}>📭</div>
-            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "rgba(255,255,255,0.5)", fontSize: "1.4rem", marginBottom: "0.5rem" }}>No Events Found</h3>
-            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.25)", fontSize: "0.85rem" }}>Events and their certificates will appear here once created.</p>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "rgba(255,255,255,0.5)", fontSize: "1.4rem", marginBottom: "0.5rem" }}>No Completed Events Yet</h3>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.25)", fontSize: "0.85rem" }}>Results and certificates will appear here once an event has taken place.</p>
+          </div>
+        )}
+
+        {/* No events match the current search */}
+        {!loading && events.length > 0 && filteredEvents.length === 0 && (
+          <div style={{ borderRadius: 20, border: "1px dashed rgba(255,255,255,0.08)", padding: "3rem 2rem", textAlign: "center", background: "rgba(255,255,255,0.015)", marginBottom: "1.5rem" }}>
+            <div style={{ fontSize: "2rem", marginBottom: "0.75rem", opacity: 0.5 }}>🔍</div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "rgba(255,255,255,0.5)", fontSize: "1.2rem" }}>
+              No events found matching "<span style={{ color: "#C9A84C" }}>{search}</span>"
+            </h3>
           </div>
         )}
 
         {/* Event cards */}
-        {!loading && events.map(event => {
+        {!loading && filteredEvents.map(event => {
           const certs = certsByEvent[event.id] || [];
+          const expanded = expandedEventId === event.id;
           return (
             <div key={event.id} style={{ borderRadius: 20, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)", background: "#111122", marginBottom: "1.5rem", opacity: visible ? 1 : 0, transition: "all 0.6s" }}>
               <EventCardHeader
                 event={event}
-                expanded={expandedEventId === event.id}
-                onExpand={() => setExpandedEventId(expandedEventId === event.id ? null : event.id)}
+                expanded={expanded}
+                onExpand={() => setExpandedEventId(expanded ? null : event.id)}
                 certCount={certs.length}
               />
 
-              <div style={{ overflow: "hidden", maxHeight: expandedEventId === event.id ? 4000 : 0, transition: "max-height 0.55s cubic-bezier(0.16,1,0.3,1)", borderTop: expandedEventId === event.id ? "1px solid rgba(255,255,255,0.06)" : "none" }}>
+              <div style={{ overflow: "hidden", maxHeight: expanded ? 4000 : 0, transition: "max-height 0.55s cubic-bezier(0.16,1,0.3,1)", borderTop: expanded ? "1px solid rgba(255,255,255,0.06)" : "none" }}>
+
+                {/* View Full Results — links out to the event's unique external results page */}
+                {event.results_url && (
+                  <div style={{ padding: "1.25rem 2rem 0" }}>
+                    <a href={event.results_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.65rem 1.25rem", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.35)", borderRadius: 6, color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", textDecoration: "none", letterSpacing: "0.06em", textTransform: "uppercase", transition: "all 0.2s" }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.2)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(201,168,76,0.1)"; }}>
+                      View Full Results <ExternalLinkIcon />
+                    </a>
+                  </div>
+                )}
+
                 {activeTab === "results" && (
                   <CertificatesTable
                     certs={certs}
@@ -1191,23 +1380,30 @@ export default function ResultsPage() {
     setToast({ message, type, id: Date.now() });
   }, []);
 
-  // Load all events then fetch PDF media per event
+  // Load all events then fetch PDF media per event — only for events that have
+  // already happened (i.e. their event_date is in the past).
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const eventsData = await api.getEvents();
-      const eventList = eventsData.events || [];
-      setEvents(eventList);
+      const allEvents = eventsData.events || [];
 
-      // Fetch media for each event — we treat PDFs as certificates
+      // Only past ("completed") events belong on the results page.
+      const pastEvents = allEvents
+        .filter(isPastEvent)
+        .sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
+
+      setEvents(pastEvents);
+
+      // Fetch media only for the past events we're actually displaying
       const mediaResults = await Promise.allSettled(
-        eventList.map(ev => api.getEventMedia(ev.id))
+        pastEvents.map(ev => api.getEventMedia(ev.id))
       );
 
       const byEvent = {};
       mediaResults.forEach((result, i) => {
-        const eventId = eventList[i].id;
+        const eventId = pastEvents[i].id;
         if (result.status === "fulfilled") {
           const files = result.value.media_files || result.value.results || [];
           // Filter for PDFs (by extension or mime hint in filename)
@@ -1219,7 +1415,7 @@ export default function ResultsPage() {
           byEvent[eventId] = (pdfs.length > 0 ? pdfs : files).map(f => ({
             ...f,
             event_id: eventId,
-            event_title: eventList[i].title,
+            event_title: pastEvents[i].title,
             // Participant name: stored in original_filename without extension
             participantName: (f.original_filename || "").replace(/\.pdf$/i, "").replace(/[-_]/g, " ") || null,
           }));
@@ -1284,7 +1480,7 @@ export default function ResultsPage() {
 
   const handleUploadClick = () => {
     if (!authToken) { openAuth("upload"); return; }
-    if (events.length === 0) { showToast("No events found. Create an event first.", "error"); return; }
+    if (events.length === 0) { showToast("No completed events found. Create an event first.", "error"); return; }
     setShowUpload(true);
   };
 
@@ -1329,6 +1525,7 @@ export default function ResultsPage() {
           onUploaded={handleUploaded}
           showToast={showToast}
           token={authToken}
+          onRefresh={loadData}
         />
       )}
 

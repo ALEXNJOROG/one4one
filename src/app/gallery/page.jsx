@@ -90,6 +90,7 @@ const GLOBAL_CSS = `
   .nav-link:hover::after { width: 100%; }
 
   .filter-btn { transition: all 0.25s; }
+  .mode-btn { transition: all 0.25s; }
 
   .skeleton {
     background: linear-gradient(90deg, #1a1a2e 25%, #22223a 50%, #1a1a2e 75%);
@@ -227,6 +228,22 @@ const api = {
     return json.data;
   },
 
+  // Bulk upload: a zipped folder containing many photos/videos for one event.
+  // NOTE: the backend expects the file under the 'archive' field name (same
+  // convention as the results/certificates bulk endpoint).
+  async bulkUploadMedia(eventId, zipFile, token) {
+    const formData = new FormData();
+    formData.append("archive", zipFile);
+    const res = await fetch(`${BASE_URL}/api/events/${eventId}/media/bulk`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`Bulk upload failed: ${res.status}`);
+    const json = await res.json().catch(() => ({}));
+    return json;
+  },
+
   async deleteMedia(mediaId, token) {
     const res = await fetch(`${BASE_URL}/api/media/${mediaId}`, {
       method: "DELETE",
@@ -332,6 +349,13 @@ const ExternalLinkIcon = () => (
     <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
   </svg>
 );
+const TrophyIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="8 21 12 21 16 21"/><line x1="12" y1="17" x2="12" y2="21"/>
+    <path d="M7 4H4a2 2 0 0 0-2 2v3c0 3.31 2.69 6 6 6h.01M17 4h3a2 2 0 0 1 2 2v3c0 3.31-2.69 6-6 6H17"/>
+    <rect x="7" y="2" width="10" height="11" rx="1"/>
+  </svg>
+);
 const InstagramIcon = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
@@ -352,6 +376,22 @@ const TwitterIcon = ({ size = 16 }) => (
 const LogoutIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+  </svg>
+);
+const FileZipIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <path d="M12 12v1M12 15v1M12 18v1"/>
+    <rect x="10.5" y="9" width="3" height="2"/>
+  </svg>
+);
+const ImageStackIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="14" height="14" rx="2"/>
+    <path d="M7 21h10a2 2 0 0 0 2-2V7"/>
+    <circle cx="8" cy="8" r="1.5"/>
+    <path d="M3 14l3.5-3.5a1.5 1.5 0 0 1 2.12 0L13 15"/>
   </svg>
 );
 
@@ -492,13 +532,6 @@ function AuthModal({ onClose, onSuccess, showToast }) {
               {loading ? <Spinner size={16} color="#C9A84C" /> : (mode === "login" ? "Sign In" : "Sign Up")}
             </button>
           </div>
-          {/* <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
-            <button type="button" onClick={() => setMode(m => m === "login" ? "signup" : "login")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 4, textDecorationColor: "#C9A84C", transition: "color 0.2s" }}
-              onMouseEnter={e => e.currentTarget.style.color = "#C9A84C"}
-              onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.4)"}>
-              {mode === "login" ? "Need an account? Sign up" : "Already have an account? Sign in"}
-            </button>
-          </div> */}
         </form>
       </div>
     </div>
@@ -515,6 +548,9 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
     location: event?.location || "",
     cover_image: event?.cover_image || "",
     drive_link: event?.drive_link || "",
+    // The external results page for this event (e.g. a Sporthive results link).
+    // Usually only known/added once the event has actually taken place.
+    results_url: event?.results_url || "",
   });
   const [saving, setSaving] = useState(false);
   const [fieldFocus, setFieldFocus] = useState(null);
@@ -529,6 +565,10 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
   const handleSubmit = async () => {
     if (!form.title.trim()) { showToast("Title is required", "error"); return; }
     if (!form.event_date) { showToast("Event date is required", "error"); return; }
+    if (form.results_url.trim() && !/^https?:\/\//i.test(form.results_url.trim())) {
+      showToast("Results URL must start with http:// or https://", "error");
+      return;
+    }
     setSaving(true);
     try {
       let result;
@@ -602,6 +642,29 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
             <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.74rem", color: "rgba(201,168,76,0.7)" }}>✓ Drive link set —</span>
               <a href={form.drive_link} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.74rem", color: "#C9A84C", textDecoration: "underline" }}>preview link</a>
+            </div>
+          )}
+        </FormField>
+
+        {/* ── Results URL (e.g. Sporthive) ── */}
+        <FormField label="Results URL">
+          <input
+            value={form.results_url}
+            onChange={set("results_url")}
+            onFocus={() => setFieldFocus("results_url")}
+            onBlur={() => setFieldFocus(null)}
+            placeholder="https://sporthive.com/events/s/... (add once results are out)"
+            style={dynBorder("results_url")}
+          />
+          <p style={{ marginTop: "0.4rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", lineHeight: 1.5 }}>
+            This powers the "View Full Results" button on the public Results page. Leave blank until the event has finished and results are published — you can come back and add it later by editing the event.
+          </p>
+          {form.results_url && (
+            <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.74rem", color: "rgba(201,168,76,0.7)" }}>✓ Results link set —</span>
+              <a href={form.results_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.74rem", color: "#C9A84C", textDecoration: "underline" }}>
+                preview link <ExternalLinkIcon />
+              </a>
             </div>
           )}
         </FormField>
@@ -712,7 +775,7 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.40)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
-        <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, width: "100%", maxWidth: 820, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", display: "flex", flexDirection: "column", maxHeight: "88vh" }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: "#111122", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 16, width: "100%", maxWidth: 920, animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", display: "flex", flexDirection: "column", maxHeight: "88vh" }}>
 
           {/* Modal Header */}
           <div style={{ padding: "1.75rem 2rem 1.25rem", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
@@ -771,8 +834,8 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
             {!loading && !error && events.length > 0 && (
               <div>
                 {/* Table Header */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 70px 70px 160px 110px", gap: "0.5rem", padding: "0.5rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  {["Event", "Date", "Photos", "Videos", "Drive Album", "Actions"].map(h => (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 60px 60px 140px 130px 110px", gap: "0.5rem", padding: "0.5rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  {["Event", "Date", "Photos", "Videos", "Drive Album", "Results", "Actions"].map(h => (
                     <span key={h} style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", fontWeight: 700, color: "rgba(255,255,255,0.25)", letterSpacing: "0.12em", textTransform: "uppercase" }}>{h}</span>
                   ))}
                 </div>
@@ -782,7 +845,7 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
                   <div
                     key={ev.id}
                     className="event-row"
-                    style={{ display: "grid", gridTemplateColumns: "1fr 130px 70px 70px 160px 110px", gap: "0.5rem", padding: "1rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.04)", alignItems: "center" }}
+                    style={{ display: "grid", gridTemplateColumns: "1fr 120px 60px 60px 140px 130px 110px", gap: "0.5rem", padding: "1rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.04)", alignItems: "center" }}
                   >
                     {/* Cell 1 – Event title */}
                     <div style={{ minWidth: 0 }}>
@@ -829,7 +892,26 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
                       )}
                     </div>
 
-                    {/* Cell 6 – Actions */}
+                    {/* Cell 6 – Results URL link */}
+                    <div style={{ minWidth: 0 }}>
+                      {ev.results_url ? (
+                        <a
+                          href={ev.results_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={ev.results_url}
+                          style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.3rem 0.75rem", borderRadius: 5, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", color: "#4ade80", textDecoration: "none", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.66rem", letterSpacing: "0.06em", textTransform: "uppercase", transition: "all 0.2s", whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%", textOverflow: "ellipsis" }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "rgba(34,197,94,0.2)"; e.currentTarget.style.borderColor = "#4ade80"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "rgba(34,197,94,0.1)"; e.currentTarget.style.borderColor = "rgba(34,197,94,0.3)"; }}
+                        >
+                          🏆 Results
+                        </a>
+                      ) : (
+                        <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.75rem", color: "rgba(255,255,255,0.2)", fontStyle: "italic" }}>Not set</span>
+                      )}
+                    </div>
+
+                    {/* Cell 7 – Actions */}
                     <div style={{ display: "flex", gap: "0.45rem" }}>
                       <button
                         onClick={() => setEditingEvent(ev)}
@@ -857,7 +939,7 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
           </div>
 
           <div style={{ padding: "1rem 2rem", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.75rem", color: "rgba(255,255,255,0.2)" }}>Changes take effect immediately across the gallery.</span>
+            <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.75rem", color: "rgba(255,255,255,0.2)" }}>Changes take effect immediately across the gallery and results page.</span>
             <button onClick={onClose} style={{ padding: "0.55rem 1.25rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
               Close
             </button>
@@ -878,15 +960,18 @@ function EventsManagerModal({ onClose, showToast, onEventsChanged, token }) {
   );
 }
 
-// ── Upload Modal ──────────────────────────────────────────────────────────────
-function UploadModal({ events, onClose, onUploaded, showToast, token }) {
+// ── Upload Modal (single + bulk) ──────────────────────────────────────────────
+function UploadModal({ events, onClose, onUploaded, showToast, token, onRefresh }) {
+  const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [selectedEventId, setSelectedEventId] = useState(events[0]?.id || "");
   const [fileType, setFileType] = useState("photo");
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [zipFile, setZipFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef();
+  const zipRef = useRef();
 
   const handleFile = (f) => {
     if (!f) return;
@@ -897,10 +982,26 @@ function UploadModal({ events, onClose, onUploaded, showToast, token }) {
     else setFileType("photo");
   };
 
+  const handleZipFile = (f) => {
+    if (!f) return;
+    const isZip = f.type === "application/zip" || f.type === "application/x-zip-compressed" || f.name.toLowerCase().endsWith(".zip");
+    if (!isZip) {
+      showToast("Only ZIP files are allowed for bulk upload", "error");
+      return;
+    }
+    setZipFile(f);
+  };
+
   const handleDrop = (e) => {
     e.preventDefault(); setDragOver(false);
     const f = e.dataTransfer.files[0];
     if (f) handleFile(f);
+  };
+
+  const handleZipDrop = (e) => {
+    e.preventDefault(); setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleZipFile(f);
   };
 
   const handleSubmit = async () => {
@@ -918,10 +1019,44 @@ function UploadModal({ events, onClose, onUploaded, showToast, token }) {
     }
   };
 
+  const handleBulkSubmit = async () => {
+    if (!zipFile || !selectedEventId) { showToast("Please select an event and a ZIP file", "error"); return; }
+    setUploading(true);
+    try {
+      await api.bulkUploadMedia(selectedEventId, zipFile, token);
+      showToast("Bulk media uploaded successfully!", "success");
+      if (onRefresh) await onRefresh();
+      onClose();
+    } catch (err) {
+      showToast(err.message || "Bulk upload failed", "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
   }, []);
+
+  const modeTabStyle = (active) => ({
+    flex: 1,
+    padding: "0.65rem",
+    borderRadius: 6,
+    border: `1px solid ${active ? "rgba(201,168,76,0.5)" : "rgba(255,255,255,0.1)"}`,
+    background: active ? "rgba(201,168,76,0.12)" : "transparent",
+    color: active ? "#C9A84C" : "rgba(255,255,255,0.45)",
+    fontFamily: "'Syne', sans-serif",
+    fontWeight: 700,
+    fontSize: "0.72rem",
+    letterSpacing: "0.07em",
+    textTransform: "uppercase",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.4rem",
+  });
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(5,5,15,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.2s ease", padding: "1rem" }}>
@@ -933,6 +1068,17 @@ function UploadModal({ events, onClose, onUploaded, showToast, token }) {
           </div>
           <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
         </div>
+
+        {/* Mode toggle: single vs bulk */}
+        <div style={{ display: "flex", gap: "0.6rem", marginBottom: "1.4rem" }}>
+          <button className="mode-btn" onClick={() => setMode("single")} style={modeTabStyle(mode === "single")}>
+            <ImageStackIcon /> Single File
+          </button>
+          <button className="mode-btn" onClick={() => setMode("bulk")} style={modeTabStyle(mode === "bulk")}>
+            <FileZipIcon /> Bulk Upload (ZIP)
+          </button>
+        </div>
+
         <div style={{ marginBottom: "1rem" }}>
           <label style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.12em", textTransform: "uppercase", display: "block", marginBottom: "0.5rem" }}>Select Event</label>
           <select value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)} style={{ width: "100%", padding: "0.65rem 0.9rem", background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#fff", fontFamily: "'DM Sans', sans-serif", fontSize: "0.88rem", cursor: "pointer", outline: "none" }}>
@@ -941,49 +1087,96 @@ function UploadModal({ events, onClose, onUploaded, showToast, token }) {
             ))}
           </select>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-          {["photo", "video"].map(t => (
-            <button key={t} onClick={() => setFileType(t)} style={{ flex: 1, padding: "0.55rem", borderRadius: 6, border: "1px solid", borderColor: fileType === t ? "#C9A84C" : "rgba(255,255,255,0.1)", background: fileType === t ? "rgba(201,168,76,0.1)" : "transparent", color: fileType === t ? "#C9A84C" : "rgba(255,255,255,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s" }}>
-              {t === "photo" ? "📷 Photo" : "🎬 Video"}
-            </button>
-          ))}
-        </div>
-        <div
-          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
-          style={{ border: `2px dashed ${dragOver ? "#C9A84C" : "rgba(201,168,76,0.25)"}`, borderRadius: 10, padding: "1.5rem", textAlign: "center", cursor: "pointer", background: dragOver ? "rgba(201,168,76,0.05)" : "rgba(255,255,255,0.02)", transition: "all 0.2s", marginBottom: "1.25rem", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
-          <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
-          {preview ? (
-            fileType === "photo"
-              ? <img src={preview} alt="preview" style={{ maxHeight: 120, maxWidth: "100%", borderRadius: 6, objectFit: "contain" }} />
-              : <video src={preview} style={{ maxHeight: 100, maxWidth: "100%", borderRadius: 6 }} controls />
-          ) : (
-            <>
-              <div style={{ fontSize: "2rem", opacity: 0.5 }}>{fileType === "photo" ? "🖼️" : "🎞️"}</div>
-              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "rgba(255,255,255,0.45)" }}>
-                Drop {fileType} here or <span style={{ color: "#C9A84C", fontWeight: 600 }}>browse</span>
+
+        {mode === "single" && (
+          <>
+            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+              {["photo", "video"].map(t => (
+                <button key={t} onClick={() => setFileType(t)} style={{ flex: 1, padding: "0.55rem", borderRadius: 6, border: "1px solid", borderColor: fileType === t ? "#C9A84C" : "rgba(255,255,255,0.1)", background: fileType === t ? "rgba(201,168,76,0.1)" : "transparent", color: fileType === t ? "#C9A84C" : "rgba(255,255,255,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s" }}>
+                  {t === "photo" ? "📷 Photo" : "🎬 Video"}
+                </button>
+              ))}
+            </div>
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileRef.current?.click()}
+              style={{ border: `2px dashed ${dragOver ? "#C9A84C" : "rgba(201,168,76,0.25)"}`, borderRadius: 10, padding: "1.5rem", textAlign: "center", cursor: "pointer", background: dragOver ? "rgba(201,168,76,0.05)" : "rgba(255,255,255,0.02)", transition: "all 0.2s", marginBottom: "1.25rem", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+              <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+              {preview ? (
+                fileType === "photo"
+                  ? <img src={preview} alt="preview" style={{ maxHeight: 120, maxWidth: "100%", borderRadius: 6, objectFit: "contain" }} />
+                  : <video src={preview} style={{ maxHeight: 100, maxWidth: "100%", borderRadius: 6 }} controls />
+              ) : (
+                <>
+                  <div style={{ fontSize: "2rem", opacity: 0.5 }}>{fileType === "photo" ? "🖼️" : "🎞️"}</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "rgba(255,255,255,0.45)" }}>
+                    Drop {fileType} here or <span style={{ color: "#C9A84C", fontWeight: 600 }}>browse</span>
+                  </div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.2)" }}>
+                    {fileType === "photo" ? "JPG, PNG, WEBP" : "MP4, MOV, AVI"} supported
+                  </div>
+                </>
+              )}
+            </div>
+            {file && (
+              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.35)", marginBottom: "1rem" }}>
+                {file.name} · {formatFileSize(file.size)}
               </div>
-              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.2)" }}>
-                {fileType === "photo" ? "JPG, PNG, WEBP" : "MP4, MOV, AVI"} supported
-              </div>
-            </>
-          )}
-        </div>
-        {file && (
-          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.78rem", color: "rgba(255,255,255,0.35)", marginBottom: "1rem" }}>
-            {file.name} · {formatFileSize(file.size)}
-          </div>
+            )}
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Cancel
+              </button>
+              <button onClick={handleSubmit} disabled={!file || !selectedEventId || uploading} style={{ flex: 2, padding: "0.75rem", borderRadius: 6, background: file && selectedEventId && !uploading ? "linear-gradient(135deg,#C9A84C,#b8962e)" : "rgba(201,168,76,0.2)", color: file && selectedEventId && !uploading ? "#0d0d1a" : "rgba(201,168,76,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: file && selectedEventId && !uploading ? "pointer" : "not-allowed", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+                {uploading ? <><Spinner size={16} color="#C9A84C" /> Uploading...</> : <><UploadIcon /> Upload Media</>}
+              </button>
+            </div>
+          </>
         )}
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-            Cancel
-          </button>
-          <button onClick={handleSubmit} disabled={!file || !selectedEventId || uploading} style={{ flex: 2, padding: "0.75rem", borderRadius: 6, background: file && selectedEventId && !uploading ? "linear-gradient(135deg,#C9A84C,#b8962e)" : "rgba(201,168,76,0.2)", color: file && selectedEventId && !uploading ? "#0d0d1a" : "rgba(201,168,76,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: file && selectedEventId && !uploading ? "pointer" : "not-allowed", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
-            {uploading ? <><Spinner size={16} color="#C9A84C" /> Uploading...</> : <><UploadIcon /> Upload Media</>}
-          </button>
-        </div>
+
+        {mode === "bulk" && (
+          <>
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleZipDrop}
+              onClick={() => zipRef.current?.click()}
+              style={{ border: `2px dashed ${dragOver ? "#C9A84C" : "rgba(201,168,76,0.25)"}`, borderRadius: 10, padding: "1.5rem", textAlign: "center", cursor: "pointer", background: dragOver ? "rgba(201,168,76,0.05)" : "rgba(255,255,255,0.02)", transition: "all 0.2s", marginBottom: "1rem", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+              <input ref={zipRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" style={{ display: "none" }} onChange={e => handleZipFile(e.target.files[0])} />
+              {zipFile ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 10, background: "rgba(201,168,76,0.12)", border: "1px solid rgba(201,168,76,0.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#C9A84C" }}>
+                    <FileZipIcon />
+                  </div>
+                  <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#C9A84C", fontSize: "0.85rem" }}>{zipFile.name}</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.3)" }}>{formatFileSize(zipFile.size)}</div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: "2rem", opacity: 0.5 }}>🗂️</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.85rem", color: "rgba(255,255,255,0.45)" }}>
+                    Drop a ZIP folder here or <span style={{ color: "#C9A84C", fontWeight: 600 }}>browse</span>
+                  </div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.2)" }}>One ZIP containing all photos/videos for this event</div>
+                </>
+              )}
+            </div>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", marginBottom: "1.25rem", lineHeight: 1.6 }}>
+              Photo and video files inside the ZIP will be detected and uploaded automatically. The gallery will refresh once processing finishes.
+            </p>
+
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button onClick={onClose} style={{ flex: 1, padding: "0.75rem", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Cancel
+              </button>
+              <button onClick={handleBulkSubmit} disabled={!zipFile || !selectedEventId || uploading} style={{ flex: 2, padding: "0.75rem", borderRadius: 6, background: zipFile && !uploading ? "linear-gradient(135deg,#C9A84C,#b8962e)" : "rgba(201,168,76,0.2)", color: zipFile && !uploading ? "#0d0d1a" : "rgba(201,168,76,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.75rem", cursor: zipFile && !uploading ? "pointer" : "not-allowed", letterSpacing: "0.08em", textTransform: "uppercase", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.2s" }}>
+                {uploading ? <><Spinner size={16} color="#C9A84C" /> Uploading...</> : <><UploadIcon /> Upload ZIP</>}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1279,7 +1472,6 @@ function StatsBar({ totalPhotos, totalVideos, totalEvents, showing, loading }) {
 }
 
 // ── View Album Button (standalone reusable) ───────────────────────────────────
-// Prominent banner shown above each event's photos in the grid
 function ViewAlbumBanner({ eventName, driveLink, photoCount }) {
   if (!driveLink) return null;
   return (
@@ -1337,7 +1529,6 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
   const [activeFilter, setActiveFilter] = useState("All");
   const [activeEventId, setActiveEventId] = useState("all");
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  // ── CHANGE 1: default layout is now "grid" ──
   const [layout, setLayout] = useState("grid");
 
   const labelSet = new Set(events.map(e => guessLabel(e)));
@@ -1349,23 +1540,20 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
     return matchLabel && matchEvent;
   });
 
-  // Group media by event for the "by event" views
   const byEvent = filtered.reduce((acc, item) => {
     const key = item.event_id;
     if (!acc[key]) {
-      const ev = events.find(e => e.id === key);
       const liveEvent = events.find(e => e.id === key);
-acc[key] = {
-  name: item.event_title,
-  items: [],
-  drive_link: liveEvent?.drive_link || item.event_drive_link || null,
-};
+      acc[key] = {
+        name: item.event_title,
+        items: [],
+        drive_link: liveEvent?.drive_link || item.event_drive_link || null,
+      };
     }
     acc[key].items.push(item);
     return acc;
   }, {});
 
-  // For grid view: group by event so we can show the album banner per event
   const byEventForGrid = Object.entries(byEvent);
 
   const openLightbox = (item) => {
@@ -1400,7 +1588,6 @@ acc[key] = {
   return (
     <section ref={ref} style={{ padding: "3rem 1.5rem 6rem", background: "#0d0d1a", minHeight: "60vh" }}>
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
-        {/* ── Filters & Layout Toggles ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "2.5rem", flexWrap: "wrap", gap: "1.25rem", opacity: visible ? 1 : 0, transition: "all 0.6s" }}>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
             {FILTERS.map(f => (
@@ -1452,10 +1639,8 @@ acc[key] = {
           </div>
         )}
 
-        {/* ── MASONRY VIEW ── */}
         {!loading && layout === "masonry" && filtered.length > 0 && (
           <div>
-            {/* Show album banners at top when viewing all events */}
             {activeEventId === "all" && byEventForGrid.map(([eventId, group]) => (
               group.drive_link ? (
                 <ViewAlbumBanner
@@ -1474,12 +1659,10 @@ acc[key] = {
           </div>
         )}
 
-        {/* ── GRID VIEW (default) — grouped by event with album banner per group ── */}
         {!loading && layout === "grid" && filtered.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "3rem" }}>
             {byEventForGrid.map(([eventId, group]) => (
               <div key={eventId}>
-                {/* Event heading row */}
                 <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem", flexWrap: "wrap" }}>
                   <div style={{ width: 3, height: 26, background: "#C9A84C", borderRadius: 2, flexShrink: 0 }} />
                   <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.5rem", fontWeight: 700, color: "#fff" }}>{group.name}</h3>
@@ -1488,14 +1671,12 @@ acc[key] = {
                   </span>
                 </div>
 
-                {/* ── CHANGE 2: Prominent "View Full Album" banner under each event heading ── */}
                 <ViewAlbumBanner
                   eventName={group.name}
                   driveLink={group.drive_link}
                   photoCount={group.items.length}
                 />
 
-                {/* Photo grid for this event */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "1rem" }}>
                   {group.items.map((item, i) => (
                     <GridItem key={item.id} item={item} index={i} visible={visible} onClick={() => openLightbox(item)} />
@@ -1506,7 +1687,6 @@ acc[key] = {
           </div>
         )}
 
-        {/* ── FEATURED VIEW ── */}
         {!loading && layout === "featured" && filtered.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "4rem" }}>
             {byEventForGrid.map(([eventId, group]) => (
@@ -1584,7 +1764,6 @@ function EventGroup({ name, items, driveLink, visible, onOpen }) {
         <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", color: "rgba(255,255,255,0.35)", letterSpacing: "0.1em", textTransform: "uppercase", marginLeft: "0.25rem" }}>{items.length} {items.length === 1 ? "File" : "Files"}</span>
       </div>
 
-      {/* ── CHANGE 3: Prominent album banner in featured view too ── */}
       <div style={{ marginBottom: "1.25rem", opacity: vis ? 1 : 0, transition: "all 0.6s 0.1s" }}>
         <ViewAlbumBanner eventName={name} driveLink={driveLink} photoCount={items.length} />
       </div>
@@ -1710,7 +1889,6 @@ export default function GalleryPage() {
             ...f,
             event_id: eventList[i].id,
             event_title: eventList[i].title,
-            // ── Ensure drive_link is passed through from the event object ──
             event_drive_link: eventList[i].drive_link || null,
           }));
           combinedMedia = [...combinedMedia, ...enriched];
@@ -1843,6 +2021,7 @@ export default function GalleryPage() {
           onUploaded={handleUploaded}
           showToast={showToast}
           token={authToken}
+          onRefresh={loadGallery}
         />
       )}
 
