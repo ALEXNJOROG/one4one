@@ -1332,8 +1332,8 @@ function Gallery({ onImageClick }) {
 
   // ── Social links ──
   const socialLinks = [
-    { icon: <InstagramIcon size={16} />, name: "Instagram", url: "https://www.instagram.com/one4one_placeholder" },
-    { icon: <FacebookIcon  size={16} />, name: "Facebook",  url: "https://www.facebook.com/one4one_placeholder" },
+    { icon: <InstagramIcon size={16} />, name: "Instagram", url: "https://www.instagram.com/one4oneke?utm_source=qr" },
+    { icon: <FacebookIcon  size={16} />, name: "Facebook",  url: "https://www.facebook.com/share/19MM5AwrUC/?mibextid=wwXIfr" },
     { icon: <TwitterIcon   size={16} />, name: "Twitter",   url: "https://www.twitter.com/one4one_placeholder" },
   ];
 
@@ -1773,8 +1773,8 @@ function Contact() {
     }
   };
   const socialLinks = [
-    { icon: <InstagramIcon size={17} />, url: "https://www.instagram.com/one4one_placeholder" },
-    { icon: <FacebookIcon size={17} />, url: "https://www.facebook.com/one4one_placeholder" },
+    { icon: <InstagramIcon size={17} />, url: "https://www.instagram.com/one4oneke?utm_source=qr" },
+    { icon: <FacebookIcon size={17} />, url: "https://www.facebook.com/share/19MM5AwrUC/?mibextid=wwXIfr" },
     { icon: <TwitterIcon size={17} />, url: "https://www.twitter.com/one4one_placeholder" },
     { icon: <LinkedInIcon size={17} />, url: "https://www.linkedin.com/company/one4one_placeholder" },
   ];
@@ -1851,8 +1851,8 @@ function Contact() {
 // ── Footer ────────────────────────────────────────────────────────────────────
 function Footer() {
   const socialLinks = [
-    { icon: <InstagramIcon size={15} />, url: "https://www.instagram.com/one4one_placeholder", label: "Instagram" },
-    { icon: <FacebookIcon size={15} />, url: "https://www.facebook.com/one4one_placeholder", label: "Facebook" },
+    { icon: <InstagramIcon size={15} />, url: "https://www.instagram.com/one4oneke?utm_source=qr", label: "Instagram" },
+    { icon: <FacebookIcon size={15} />, url: "https://www.facebook.com/share/19MM5AwrUC/?mibextid=wwXIfr", label: "Facebook" },
     { icon: <TwitterIcon size={15} />, url: "https://www.twitter.com/one4one_placeholder", label: "Twitter" },
     { icon: <LinkedInIcon size={15} />, url: "https://www.linkedin.com/company/one4one_placeholder", label: "LinkedIn" },
   ];

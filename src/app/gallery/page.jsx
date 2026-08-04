@@ -1803,8 +1803,8 @@ function EventGroup({ name, items, driveLink, visible, onOpen }) {
 function SocialCTA() {
   const [ref, visible] = useInView();
   const links = [
-    { icon: <InstagramIcon size={18} />, name: "Instagram", url: "https://www.instagram.com/one4one_placeholder" },
-    { icon: <FacebookIcon size={18} />, name: "Facebook",  url: "https://www.facebook.com/one4one_placeholder" },
+    { icon: <InstagramIcon size={18} />, name: "Instagram", url: "https://www.instagram.com/one4oneke?utm_source=qr" },
+    { icon: <FacebookIcon size={18} />, name: "Facebook",  url: "https://www.facebook.com/share/19MM5AwrUC/?mibextid=wwXIfr" },
     { icon: <TwitterIcon size={18} />,  name: "Twitter",   url: "https://www.twitter.com/one4one_placeholder" },
   ];
   return (
