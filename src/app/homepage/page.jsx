@@ -384,14 +384,14 @@ function Navbar() {
   );
 }
 
-// ── Hero Slideshow (Dynamic — fetches UPCOMING events only from DB) ───────────
-// Builds slides ONLY from upcoming events (event_date >= now). Past events and
-// gallery highlights are intentionally excluded so the hero can be used as a
-// dedicated advertising space for whatever is coming up next.
-// Falls back to hardcoded FALLBACK_SLIDES if the API returns no upcoming events.
+// ── Hero Slideshow (Dynamic — fetches events from DB) ─────────────────────────
+// Priority: 1) upcoming events (event_date >= now), soonest first.
+//           2) if none upcoming, past/completed events with a cover image,
+//              most recent first — used as a gentle "throwback" slideshow.
+//           3) if neither exists, falls back to hardcoded FALLBACK_SLIDES.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Hardcoded fallback (used only if API has no upcoming events) ──────────────
+// ── Hardcoded fallback (used only if API has no events at all) ────────────────
 const FALLBACK_SLIDES = [
   {
     type: "upcoming",
@@ -430,17 +430,12 @@ function heroSubtitle(event) {
   return parts.join(" · ") || "ONE4ONE Event";
 }
 
-// ── Build dynamic slides from API data — UPCOMING EVENTS ONLY ────────────────
-function buildSlides(events) {
-  const now = new Date();
-  const slides = [];
-
-  const upcoming = events
+// ── Build UPCOMING slides — events whose date hasn't happened yet ────────────
+function buildUpcomingSlides(events, now) {
+  return events
     .filter(e => e.event_date && new Date(e.event_date) >= now)
-    .sort((a, b) => new Date(a.event_date) - new Date(b.event_date)); // soonest first
-
-  upcoming.forEach(ev => {
-    slides.push({
+    .sort((a, b) => new Date(a.event_date) - new Date(b.event_date)) // soonest first
+    .map(ev => ({
       type: "upcoming",
       label: "UPCOMING EVENT",
       title: heroTitleCase(ev.title),
@@ -452,13 +447,44 @@ function buildSlides(events) {
       cta: { text: "Register Now", href: REGISTER_URL, external: true },
       accentColor: "#C9A84C",
       overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.75) 0%, rgba(13,13,26,0.3) 60%, rgba(201,168,76,0.1) 100%)",
-    });
-  });
-
-  return slides.length > 0 ? slides : null; // null → use fallback
+    }));
 }
 
-// ── Fetch hero data (upcoming events only — no photos needed anymore) ────────
+// ── Build PAST slides — completed events with a cover image, used only when ──
+// there is nothing upcoming, so the hero still has something nice to show.
+function buildPastSlides(events, now) {
+  return events
+    .filter(e => e.event_date && new Date(e.event_date) < now && e.cover_image)
+    .sort((a, b) => new Date(b.event_date) - new Date(a.event_date)) // most recent first
+    .map(ev => ({
+      type: "past",
+      label: "THROWBACK",
+      title: heroTitleCase(ev.title),
+      subtitle: heroSubtitle(ev),
+      date: heroFormatDate(ev.event_date),
+      tag: "Completed",
+      tagColor: "#4ade80",
+      img: ev.cover_image || "",
+      cta: { text: "View Gallery", href: "#gallery", external: false },
+      accentColor: "#C9A84C",
+      overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.78) 0%, rgba(13,13,26,0.35) 60%, rgba(201,168,76,0.08) 100%)",
+    }));
+}
+
+// ── Build dynamic slides from API data ────────────────────────────────────────
+function buildSlides(events) {
+  const now = new Date();
+
+  const upcoming = buildUpcomingSlides(events, now);
+  if (upcoming.length > 0) return upcoming;
+
+  const past = buildPastSlides(events, now);
+  if (past.length > 0) return past;
+
+  return null; // null → use FALLBACK_SLIDES
+}
+
+// ── Fetch hero data (all events — upcoming and past are split client-side) ───
 async function fetchHeroData() {
   const evRes = await fetch(`${BASE_URL}/api/events?page=1&limit=50`);
   if (!evRes.ok) throw new Error(`Events fetch failed: ${evRes.status}`);
@@ -625,7 +651,7 @@ function HeroSlideshow({ onImageClick }) {
         </div>
       </div>
 
-      {/* ── Slide nav dots (only if more than one upcoming event) ── */}
+      {/* ── Slide nav dots (only if more than one slide) ── */}
       {multipleSlides && (
         <div style={{ position: "absolute", right: "2rem", top: "50%", transform: "translateY(-50%)", zIndex: 6, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {slides.map((_, i) => (
@@ -634,7 +660,7 @@ function HeroSlideshow({ onImageClick }) {
         </div>
       )}
 
-      {/* ── Prev / Next arrows (only if more than one upcoming event) ── */}
+      {/* ── Prev / Next arrows (only if more than one slide) ── */}
       {multipleSlides && (
         <>
           <button onClick={() => goTo((current - 1 + slides.length) % slides.length, -1)} style={{ position: "absolute", bottom: "8rem", right: "5rem", zIndex: 6, width: 48, height: 48, borderRadius: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.25s" }}
@@ -650,7 +676,7 @@ function HeroSlideshow({ onImageClick }) {
         </>
       )}
 
-      {/* ── Progress bar (only if more than one upcoming event) ── */}
+      {/* ── Progress bar (only if more than one slide) ── */}
       {multipleSlides && (
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(255,255,255,0.1)", zIndex: 6 }}>
           <div key={current} style={{ height: "100%", background: "linear-gradient(90deg, #C9A84C, #e8c96a)", animation: "lineExpand 6s linear forwards", width: "0%" }} />
@@ -748,11 +774,6 @@ function WhatWeOrganize() {
 }
 
 // ── Events Section ────────────────────────────────────────────────────────────
-// Fetches live events, splits them into upcoming / past by date, and renders
-// everything in the same luxury dark aesthetic used across the site.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── API helper (mirrors results page) ────────────────────────────────────────
 async function fetchEvents(page = 1, limit = 50) {
   const res = await fetch(`${BASE_URL}/api/events?page=${page}&limit=${limit}`);
   if (!res.ok) throw new Error(`Events fetch failed: ${res.status}`);
@@ -761,7 +782,6 @@ async function fetchEvents(page = 1, limit = 50) {
   return json.data.events || [];
 }
 
-// ── Tiny helpers ──────────────────────────────────────────────────────────────
 function formatEventDate(dateStr) {
   if (!dateStr) return null;
   const d = new Date(dateStr);
@@ -773,7 +793,6 @@ function isPast(dateStr) {
   return new Date(dateStr) < new Date();
 }
 
-// ── Icons (self-contained — no external deps) ─────────────────────────────────
 const CalIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -800,7 +819,6 @@ const RefreshIcon = () => (
   </svg>
 );
 
-// ── Skeleton card ─────────────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
     <div style={{ borderRadius: 20, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)", background: "#111122" }}>
@@ -814,11 +832,9 @@ function SkeletonCard() {
   );
 }
 
-// ── Upcoming event card ───────────────────────────────────────────────────────
 function UpcomingCard({ event, index, visible, onImageClick }) {
   const [hovered, setHovered] = useState(false);
 
-  // Derive participant/capacity label from event fields
   const participantLabel =
     event.max_participants
       ? `${event.max_participants} Spots`
@@ -914,15 +930,11 @@ function UpcomingCard({ event, index, visible, onImageClick }) {
   );
 }
 
-// ── Past event card ───────────────────────────────────────────────────────────
 function PastEventCard({ event, index, visible, onImageClick, onCertClick }) {
   const [expanded, setExpanded] = useState(false);
   const [photoHovered, setPhotoHovered] = useState(null);
 
-  // Try to get photo gallery from event data (media_files or photos array)
   const photos = event.photos || event.media_files || [];
-
-  // Certificates embedded in event data (static fallback)
   const certificates = event.certificates || [];
 
   const meta = [
@@ -1091,7 +1103,6 @@ function PastEventCard({ event, index, visible, onImageClick, onCertClick }) {
   );
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
 function EmptyState({ type }) {
   return (
     <div style={{ borderRadius: 20, border: "1px dashed rgba(255,255,255,0.08)", padding: "3rem 2rem", textAlign: "center", background: "rgba(255,255,255,0.015)" }}>
@@ -1106,7 +1117,6 @@ function EmptyState({ type }) {
   );
 }
 
-// ── Section label ─────────────────────────────────────────────────────────────
 function SectionLabel({ eyebrow, heading, visible, delay = 0 }) {
   return (
     <div style={{ marginBottom: "2.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(20px)", transition: `all 0.7s ${delay}s` }}>
@@ -1119,18 +1129,13 @@ function SectionLabel({ eyebrow, heading, visible, delay = 0 }) {
   );
 }
 
-// ── MAIN COMPONENT ─────────────────────────────────────────────────────────────
 function Events({ onImageClick, onCertClick }) {
   const [ref, visible] = useInView();
 
-  // ── Live event data ──
   const [allEvents, setAllEvents] = useState([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [eventsError, setEventsError] = useState(null);
 
-  // ── Static past-event data preserved from your original homepage ──
-  // (Mt. Kenya Day Dash with its photos & certificates, shown until the API
-  //  returns an event with the same name / a matching id)
   const STATIC_MTKD = {
     _static: true,
     id: "__mtkd_static__",
@@ -1171,17 +1176,14 @@ function Events({ onImageClick, onCertClick }) {
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
 
-  // ── Split & merge ──
   const now = new Date();
 
-  // De-duplicate: if API already returns Mt. Kenya Day Dash, don't show static copy
   const apiTitles = allEvents.map(e => (e.title || "").toLowerCase());
   const showStaticMTKD = !apiTitles.some(t => t.includes("kenya") && t.includes("dash"));
 
   const upcoming = allEvents.filter(e => e.event_date && new Date(e.event_date) >= now);
   const pastFromAPI = allEvents.filter(e => !e.event_date || new Date(e.event_date) < now);
 
-  // Static event is always past
   const pastEvents = showStaticMTKD
     ? [STATIC_MTKD, ...pastFromAPI]
     : pastFromAPI;
@@ -1192,7 +1194,6 @@ function Events({ onImageClick, onCertClick }) {
       ref={ref}
       style={{ padding: "7rem 1.5rem", background: "#0d0d1a", position: "relative", overflow: "hidden" }}
     >
-      {/* Ambient glow */}
       <div style={{ position: "absolute", top: "10%", left: "-5%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(201,168,76,0.05) 0%, transparent 70%)", pointerEvents: "none" }} />
       <div style={{ position: "absolute", bottom: "5%", right: "-8%", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(201,168,76,0.04) 0%, transparent 70%)", pointerEvents: "none" }} />
 
@@ -1259,10 +1260,6 @@ function Events({ onImageClick, onCertClick }) {
 }
 
 // ── Gallery ────────────────────────────────────────────────────────────────────
-// Fetches live photos from the DB and displays them as an immersive cinematic
-// slideshow with a film-strip thumbnail row at the bottom.
-// ─────────────────────────────────────────────────────────────────────────────
-
 async function fetchAllGalleryMedia() {
   const evRes = await fetch(`${BASE_URL}/api/events?page=1&limit=50`);
   if (!evRes.ok) throw new Error(`Events fetch failed: ${evRes.status}`);
@@ -1313,31 +1310,25 @@ function guessLabel(eventTitle = "") {
 function Gallery({ onImageClick }) {
   const [ref, visible] = useInView();
 
-  // ── Data ──
   const [allPhotos, setAllPhotos]     = useState([]);
   const [loadingMedia, setLoadingMedia] = useState(true);
   const [mediaError, setMediaError]   = useState(null);
 
-  // ── Slide state ──
   const [activeIndex, setActiveIndex] = useState(0);
   const [prevIndex, setPrevIndex]     = useState(null);
   const [paused, setPaused]           = useState(false);
   const intervalRef                   = useRef(null);
 
-  // ── Thumb strip ref (DOM node, NOT useState — avoids re-renders) ──
   const thumbsContainerRef = useRef(null);
 
-  // ── Filter ──
   const [filter, setFilter] = useState("All");
 
-  // ── Social links ──
   const socialLinks = [
     { icon: <InstagramIcon size={16} />, name: "Instagram", url: "https://www.instagram.com/one4oneke?utm_source=qr" },
     { icon: <FacebookIcon  size={16} />, name: "Facebook",  url: "https://www.facebook.com/share/19MM5AwrUC/?mibextid=wwXIfr" },
     { icon: <TwitterIcon   size={16} />, name: "Twitter",   url: "https://www.twitter.com/one4one_placeholder" },
   ];
 
-  // ── Fetch once ──
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1355,21 +1346,17 @@ function Gallery({ onImageClick }) {
     return () => { cancelled = true; };
   }, []);
 
-  // ── Derived filtered list ──
   const filters  = ["All", ...Array.from(new Set(allPhotos.map(p => guessLabel(p.event_title))))];
   const filtered = filter === "All" ? allPhotos : allPhotos.filter(p => guessLabel(p.event_title) === filter);
 
-  // Reset on filter / data change
   useEffect(() => {
     setActiveIndex(0);
     setPrevIndex(null);
   }, [filter, allPhotos.length]);
 
-  // ── Pick a RANDOM next index (hero-style) ──
   const advanceRandom = useCallback(() => {
     if (filtered.length <= 1) return;
     setActiveIndex(prev => {
-      // pick any index that isn't the current one
       let next;
       do { next = Math.floor(Math.random() * filtered.length); } while (next === prev);
       setPrevIndex(prev);
@@ -1377,27 +1364,23 @@ function Gallery({ onImageClick }) {
     });
   }, [filtered.length]);
 
-  // ── Auto-advance ──
   useEffect(() => {
     if (paused || filtered.length <= 1) return;
     intervalRef.current = setInterval(advanceRandom, 5000);
     return () => clearInterval(intervalRef.current);
   }, [paused, filtered.length, filter, advanceRandom]);
 
-  // ── Scroll thumb into view WITHOUT touching page scroll ──
   useEffect(() => {
     const container = thumbsContainerRef.current;
     if (!container) return;
     const thumb = container.querySelector(`[data-thumb="${activeIndex}"]`);
     if (!thumb) return;
-    // Manual calculation — scrolls only the thumb strip, never the page
     const containerLeft  = container.getBoundingClientRect().left;
     const thumbLeft      = thumb.getBoundingClientRect().left;
     const offset         = thumbLeft - containerLeft - container.clientWidth / 2 + thumb.clientWidth / 2;
     container.scrollLeft += offset;
   }, [activeIndex]);
 
-  // ── Manual nav ──
   const goTo = (idx) => {
     clearInterval(intervalRef.current);
     setPrevIndex(activeIndex);
@@ -1409,7 +1392,6 @@ function Gallery({ onImageClick }) {
 
   const activePhoto = filtered[activeIndex] || null;
 
-  // Ken Burns directions — cycle through for variety
   const KB_VARIANTS = [
     { transformStart: "scale(1.08) translate(0%,    0%)",    transformEnd: "scale(1.18) translate(-2%, -1%)" },
     { transformStart: "scale(1.06) translate(1%,    1%)",    transformEnd: "scale(1.15) translate(-1%, -2%)" },
@@ -1431,7 +1413,6 @@ function Gallery({ onImageClick }) {
 
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
 
-        {/* ── Header row ── */}
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "2.5rem", flexWrap: "wrap", gap: "1.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(24px)", transition: "all 0.7s" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
@@ -1451,7 +1432,6 @@ function Gallery({ onImageClick }) {
           </div>
         </div>
 
-        {/* ── Main display ── */}
         {loadingMedia ? (
           <SkeletonSlideshow />
         ) : mediaError ? (
@@ -1470,12 +1450,10 @@ function Gallery({ onImageClick }) {
             onMouseEnter={() => setPaused(true)}
             onMouseLeave={() => setPaused(false)}
           >
-            {/* ── Hero-style crossfade stage ── */}
             <div
               style={{ position: "relative", borderRadius: 20, overflow: "hidden", aspectRatio: "16/8", background: "#080812", cursor: "zoom-in", boxShadow: "0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(201,168,76,0.1)" }}
               onClick={() => activePhoto && onImageClick(activePhoto.storage_path, activePhoto.event_title)}
             >
-              {/* All slides stacked — each fades in/out independently (hero pattern) */}
               {filtered.map((photo, i) => {
                 const kb = KB_VARIANTS[i % KB_VARIANTS.length];
                 const isActive = i === activeIndex;
@@ -1494,7 +1472,6 @@ function Gallery({ onImageClick }) {
                       alt={photo.event_title}
                       style={{
                         width: "100%", height: "100%", objectFit: "cover",
-                        // Ken Burns: active slide animates, inactive stays at end position
                         animation: isActive ? `heroKenBurns 8s ease-out forwards` : "none",
                         transform: isActive ? kb.transformStart : kb.transformEnd,
                       }}
@@ -1504,19 +1481,15 @@ function Gallery({ onImageClick }) {
                 );
               })}
 
-              {/* Cinematic gradient overlays — identical to hero section */}
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(13,13,26,0.6) 0%, rgba(13,13,26,0.2) 60%, transparent 100%)", zIndex: 3, pointerEvents: "none" }} />
               <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "60%", background: "linear-gradient(to top, rgba(8,8,18,0.95) 0%, rgba(8,8,18,0.35) 60%, transparent 100%)", zIndex: 3, pointerEvents: "none" }} />
-              {/* Left accent line (mirrors hero) */}
               <div style={{ position: "absolute", left: "1.5rem", top: "15%", bottom: "15%", width: 1, background: "linear-gradient(to bottom, transparent, rgba(201,168,76,0.4), transparent)", zIndex: 4, pointerEvents: "none" }} />
 
-              {/* Slide counter */}
               <div style={{ position: "absolute", top: 20, right: 24, zIndex: 5, display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(0,0,0,0.5)", backdropFilter: "blur(10px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "0.35rem 0.85rem" }}>
                 <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1rem", fontWeight: 700, color: "#C9A84C" }}>{activeIndex + 1}</span>
                 <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.7rem", color: "rgba(255,255,255,0.3)" }}>/ {filtered.length}</span>
               </div>
 
-              {/* Activity label chip */}
               {activePhoto && (
                 <div style={{ position: "absolute", top: 20, left: 24, zIndex: 5 }}>
                   <span style={{ background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.28rem 0.85rem", borderRadius: 3, fontSize: "0.68rem", fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.1em", textTransform: "uppercase" }}>
@@ -1525,10 +1498,8 @@ function Gallery({ onImageClick }) {
                 </div>
               )}
 
-              {/* Caption — hero-style bottom-left */}
               {activePhoto && (
                 <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "2rem 2rem 1.75rem 3rem", zIndex: 5 }}>
-                  {/* Slide label eyebrow */}
                   <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.6rem" }}>
                     <div style={{ width: 28, height: 1, background: "#C9A84C" }} />
                     <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.68rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.16em", textTransform: "uppercase" }}>
@@ -1553,7 +1524,6 @@ function Gallery({ onImageClick }) {
                 </div>
               )}
 
-              {/* Prev / next arrows */}
               {filtered.length > 1 && (
                 <>
                   <button onClick={e => { e.stopPropagation(); prev(); }}
@@ -1571,7 +1541,6 @@ function Gallery({ onImageClick }) {
                 </>
               )}
 
-              {/* Vertical dot nav (mirrors hero) */}
               {filtered.length > 1 && filtered.length <= 12 && (
                 <div style={{ position: "absolute", right: "1.25rem", top: "50%", transform: "translateY(-50%)", zIndex: 6, display: "flex", flexDirection: "column", gap: "0.6rem" }}>
                   {filtered.map((_, i) => (
@@ -1581,14 +1550,12 @@ function Gallery({ onImageClick }) {
                 </div>
               )}
 
-              {/* Paused indicator */}
               {paused && filtered.length > 1 && (
                 <div style={{ position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)", zIndex: 6, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, padding: "0.25rem 0.75rem" }}>
                   <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", color: "rgba(255,255,255,0.4)", letterSpacing: "0.1em", textTransform: "uppercase" }}>⏸ Paused</span>
                 </div>
               )}
 
-              {/* Progress bar */}
               {filtered.length > 1 && (
                 <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(255,255,255,0.08)", zIndex: 7 }}>
                   <div key={activeIndex} style={{ height: "100%", background: "linear-gradient(90deg,#C9A84C,#e8c96a)", animation: "lineExpand 5s linear forwards", width: "0%" }} />
@@ -1596,7 +1563,6 @@ function Gallery({ onImageClick }) {
               )}
             </div>
 
-            {/* ── Thumbnail strip — scrolled via scrollLeft, NOT scrollIntoView ── */}
             {filtered.length > 1 && (
               <div
                 ref={thumbsContainerRef}
@@ -1618,7 +1584,6 @@ function Gallery({ onImageClick }) {
           </div>
         )}
 
-        {/* ── Footer row (unchanged) ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "3rem", paddingTop: "2rem", borderTop: "1px solid rgba(255,255,255,0.06)", flexWrap: "wrap", gap: "1.5rem", opacity: visible ? 1 : 0, transition: "all 0.7s 0.4s" }}>
           <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
             <span style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.35)", fontSize: "0.85rem" }}>Follow us:</span>
@@ -1651,13 +1616,11 @@ function Results() {
 
   return (
     <section id="results" ref={ref} style={{ padding: "7rem 1.5rem", background: "#0d0d1a", position: "relative", overflow: "hidden" }}>
-      {/* Ambient glow */}
       <div style={{ position: "absolute", bottom: "0%", right: "-5%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(201,168,76,0.04) 0%, transparent 70%)", pointerEvents: "none" }} />
       <div style={{ position: "absolute", top: "10%", left: "-8%", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(201,168,76,0.03) 0%, transparent 70%)", pointerEvents: "none" }} />
 
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
 
-        {/* ── Header ── */}
         <div style={{ marginBottom: "3.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(24px)", transition: "all 0.7s" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
             <div style={{ width: 28, height: 1, background: "#C9A84C" }} />
@@ -1671,7 +1634,6 @@ function Results() {
           </p>
         </div>
 
-        {/* ── Two action cards ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px,1fr))", gap: "1.5rem", marginBottom: "2.5rem" }}>
           {[
             {
@@ -1712,7 +1674,6 @@ function Results() {
           ))}
         </div>
 
-        {/* ── View All Results CTA banner ── */}
         <div
           style={{ borderRadius: 16, border: "1px solid rgba(201,168,76,0.15)", background: "linear-gradient(135deg, rgba(201,168,76,0.06) 0%, rgba(17,17,34,0.8) 60%)", padding: "2rem 2.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1.5rem", marginBottom: "2.5rem", opacity: visible ? 1 : 0, transform: visible ? "none" : "translateY(20px)", transition: "all 0.7s 0.25s" }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.35)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(201,168,76,0.1) 0%, rgba(17,17,34,0.9) 60%)"; }}
@@ -1735,7 +1696,6 @@ function Results() {
           </a>
         </div>
 
-        {/* ── Medals & Certificates info cards ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px,1fr))", gap: "1.5rem" }}>
           {[
             { icon: "🥇", title: "Event Medals", desc: "All finishers receive a unique medal commemorating their achievement, featuring ONE4ONE branding and event-specific details." },
