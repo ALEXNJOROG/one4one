@@ -551,6 +551,9 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
     // The external results page for this event (e.g. a Sporthive results link).
     // Usually only known/added once the event has actually taken place.
     results_url: event?.results_url || "",
+    // Ticketing
+    price: event?.price !== undefined && event?.price !== null ? String(event.price) : "",
+    max_tickets: event?.max_tickets !== undefined && event?.max_tickets !== null ? String(event.max_tickets) : "",
   });
   const [saving, setSaving] = useState(false);
   const [fieldFocus, setFieldFocus] = useState(null);
@@ -569,15 +572,32 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
       showToast("Results URL must start with http:// or https://", "error");
       return;
     }
+    if (form.price.trim() && (isNaN(Number(form.price)) || Number(form.price) < 0)) {
+      showToast("Price must be a valid non-negative number", "error");
+      return;
+    }
+    if (form.max_tickets.trim() && (isNaN(Number(form.max_tickets)) || Number(form.max_tickets) < 0 || !Number.isInteger(Number(form.max_tickets)))) {
+      showToast("Max Tickets must be a valid whole number", "error");
+      return;
+    }
     setSaving(true);
     try {
-      let result;
+      const payload = {
+        ...form,
+        price: form.price.trim() ? Number(form.price) : 0,
+        max_tickets: form.max_tickets.trim() ? Number(form.max_tickets) : 0,
+      };
+            let result;
       if (isEdit) {
-        result = await api.updateEvent(event.id, form, token);
+        result = await api.updateEvent(event.id, payload, token);
         console.log("Updated event response:", result);
         showToast("Event updated successfully!", "success");
+        // Some update responses omit fields that weren't top-level in the API's
+        // return shape (e.g. price/max_tickets). Merge what we sent with whatever
+        // the API returned so the UI always reflects the save.
+        result = { ...event, ...payload, ...result };
       } else {
-        result = await api.createEvent(form, token);
+        result = await api.createEvent(payload, token);
         showToast("Event created successfully!", "success");
       }
       onSaved(result, isEdit);
@@ -623,6 +643,39 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
             <input value={form.location} onChange={set("location")} onFocus={() => setFieldFocus("location")} onBlur={() => setFieldFocus(null)} placeholder="e.g. Nairobi, Kenya" style={dynBorder("location")} />
           </FormField>
         </div>
+
+        {/* ── Ticketing: Price & Max Tickets ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+          <FormField label="Price (KES)">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={form.price}
+              onChange={set("price")}
+              onFocus={() => setFieldFocus("price")}
+              onBlur={() => setFieldFocus(null)}
+              placeholder="e.g. 1500"
+              style={dynBorder("price")}
+            />
+          </FormField>
+          <FormField label="Max Tickets">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={form.max_tickets}
+              onChange={set("max_tickets")}
+              onFocus={() => setFieldFocus("max_tickets")}
+              onBlur={() => setFieldFocus(null)}
+              placeholder="e.g. 3000"
+              style={dynBorder("max_tickets")}
+            />
+          </FormField>
+        </div>
+        <p style={{ marginTop: "-0.5rem", marginBottom: "1rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", lineHeight: 1.5 }}>
+          Price is shown publicly on the homepage. Max Tickets is used for capacity only and is never shown to visitors.
+        </p>
 
         <FormField label="Cover Image URL">
           <input value={form.cover_image} onChange={set("cover_image")} onFocus={() => setFieldFocus("cover_image")} onBlur={() => setFieldFocus(null)} placeholder="https://... (optional)" style={dynBorder("cover_image")} />

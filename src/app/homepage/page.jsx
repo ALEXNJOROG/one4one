@@ -183,41 +183,41 @@ function useCounter(target, active, duration = 1800) {
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const InstagramIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-    <circle cx="12" cy="12" r="4"/>
-    <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none"/>
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+    <circle cx="12" cy="12" r="4" />
+    <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none" />
   </svg>
 );
 const FacebookIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
   </svg>
 );
 const TwitterIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
   </svg>
 );
 const LinkedInIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
-    <rect x="2" y="9" width="4" height="12"/>
-    <circle cx="4" cy="4" r="2"/>
+    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+    <rect x="2" y="9" width="4" height="12" />
+    <circle cx="4" cy="4" r="2" />
   </svg>
 );
 const ArrowRight = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 12h14M12 5l7 7-7 7"/>
+    <path d="M5 12h14M12 5l7 7-7 7" />
   </svg>
 );
 const ChevronLeft = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M15 18l-6-6 6-6"/>
+    <path d="M15 18l-6-6 6-6" />
   </svg>
 );
 const ChevronRight = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 18l6-6-6-6"/>
+    <path d="M9 18l6-6-6-6" />
   </svg>
 );
 
@@ -279,6 +279,139 @@ function CertificateModal({ cert, onClose }) {
   );
 }
 
+// ── Registration Modal ────────────────────────────────────────────────────────
+function RegistrationModal({ eventId, eventTitle, onClose }) {
+  const [form, setForm] = useState({ full_name: "", email: "", phone_number: "", tickets_bought: 1 });
+  const [status, setStatus] = useState("idle"); // idle | submitting | success | error
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handleKey);
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", handleKey); document.body.style.overflow = ""; };
+  }, [onClose]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    if (name === "tickets_bought") {
+      // Keep it a clean positive integer, but allow the field to be cleared while typing
+      const num = value === "" ? "" : Math.max(1, parseInt(value, 10) || 1);
+      setForm({ ...form, tickets_bought: num });
+    } else {
+      setForm({ ...form, [name]: value });
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.full_name.trim() || !form.email.trim() || !form.phone_number.trim() || !form.tickets_bought) {
+      setStatus("error");
+      setErrorMsg("Please fill in all fields.");
+      return;
+    }
+    setStatus("submitting");
+    setErrorMsg("");
+    try {
+      const res = await fetch(`${BASE_URL}/api/events/${eventId}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: form.full_name.trim(),
+          email: form.email.trim(),
+          phone_number: form.phone_number.trim(),
+          tickets_bought: Number(form.tickets_bought) || 1,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.status === "error") {
+        throw new Error(json.message || `Registration failed (${res.status})`);
+      }
+      setStatus("success");
+    } catch (err) {
+      setStatus("error");
+      setErrorMsg(err.message || "Something went wrong. Please try again.");
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.25rem", animation: "fadeIn 0.2s ease" }}>
+      <div onClick={e => e.stopPropagation()} style={{ position: "relative", width: "min(460px, 95vw)", borderRadius: 20, overflow: "hidden", background: "#0d0d1a", border: "1px solid rgba(201,168,76,0.25)", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 32px 80px rgba(0,0,0,0.6)" }}>
+
+        {/* Header */}
+        <div style={{ background: "linear-gradient(135deg, rgba(201,168,76,0.15), rgba(13,13,26,0.9))", padding: "1.5rem 1.75rem", borderBottom: "1px solid rgba(201,168,76,0.15)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.5rem" }}>
+              <div style={{ width: 22, height: 1, background: "#C9A84C" }} />
+              <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.65rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.16em", textTransform: "uppercase" }}>Register</span>
+            </div>
+            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "#fff", fontSize: "1.5rem", lineHeight: 1.15 }}>{eventTitle || "Event Registration"}</div>
+          </div>
+          <button onClick={onClose} style={{ width: 36, height: 36, flexShrink: 0, borderRadius: "50%", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", fontSize: "1rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.3)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(201,168,76,0.1)"}>✕</button>
+        </div>
+
+        {/* Body */}
+        {status === "success" ? (
+          <div style={{ padding: "3rem 1.75rem", textAlign: "center" }}>
+            <div style={{ fontSize: "2.75rem", marginBottom: "1rem" }}>✅</div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "#fff", fontSize: "1.5rem", marginBottom: "0.6rem" }}>You're Registered!</h3>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.45)", fontSize: "0.88rem", lineHeight: 1.7, marginBottom: "1.75rem" }}>
+              Thanks for signing up{form.full_name ? `, ${form.full_name.split(" ")[0]}` : ""}. We've received your details and will be in touch with more information.
+            </p>
+            <button onClick={onClose} style={{ padding: "0.85rem 2rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Close
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} style={{ padding: "1.75rem" }}>
+            {[
+              { label: "Full Name", name: "full_name", placeholder: "John Doe", type: "text" },
+              { label: "Email", name: "email", placeholder: "john@example.com", type: "email" },
+              { label: "Phone Number", name: "phone_number", placeholder: "254712345678", type: "tel" },
+              { label: "Tickets", name: "tickets_bought", placeholder: "1", type: "number", min: 1 },
+            ].map(f => (
+              <div key={f.name} style={{ marginBottom: "1.1rem" }}>
+                <label style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "0.5rem", letterSpacing: "0.1em", textTransform: "uppercase" }}>{f.label}</label>
+                <input
+                  type={f.type}
+                  name={f.name}
+                  min={f.min}
+                  value={form[f.name]}
+                  onChange={handleChange}
+                  placeholder={f.placeholder}
+                  disabled={status === "submitting"}
+                  style={{ width: "100%", padding: "0.82rem 1rem", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.88rem", outline: "none", transition: "border-color 0.2s", background: "rgba(255,255,255,0.04)", color: "#fff", boxSizing: "border-box" }}
+                  onFocus={e => e.target.style.borderColor = "rgba(201,168,76,0.5)"}
+                  onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.1)"}
+                />
+              </div>
+            ))}
+
+            {status === "error" && errorMsg && (
+              <div style={{ marginBottom: "1.1rem", padding: "0.75rem 1rem", borderRadius: 8, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", color: "#fca5a5", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem" }}>
+                {errorMsg}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={status === "submitting"}
+              className="btn-primary"
+              style={{ width: "100%", padding: "1rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.88rem", cursor: status === "submitting" ? "not-allowed" : "pointer", opacity: status === "submitting" ? 0.7 : 1, boxShadow: "0 4px 24px rgba(201,168,76,0.35)", transition: "all 0.3s", letterSpacing: "0.08em", textTransform: "uppercase" }}
+            >
+              {status === "submitting" ? "Submitting..." : "Submit"}
+            </button>
+
+            <p style={{ marginTop: "1rem", textAlign: "center", fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.25)", fontSize: "0.72rem", letterSpacing: "0.04em" }}>ESC OR CLICK OUTSIDE TO CANCEL</p>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Noise texture overlay ─────────────────────────────────────────────────────
 function NoiseOverlay() {
   return (
@@ -332,19 +465,19 @@ function Navbar() {
       }}>
         <div style={{ maxWidth: 1320, margin: "0 auto", padding: "0 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", height: 78 }}>
           {/* Logo */}
-<a href="#home" style={{ display: "flex", alignItems: "center", gap: "0.75rem", textDecoration: "none" }}>
-  <div style={{ width: 200, height: 86, display: "flex", alignItems: "center", justifyContent: "center", overflow: "visible" }}>
-    <img
-      src="/media/logo4.png"
-      alt="ONE4ONE"
-      style={{ width: "100%", height: "100%", objectFit: "contain" }}
-      onError={e => {
-        e.target.style.display = "none";
-        e.target.parentNode.innerHTML = '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:1.1rem;color:#C9A84C;letter-spacing:0.05em">1·4·1</span>';
-      }}
-    />
-  </div>
-</a>
+          <a href="#home" style={{ display: "flex", alignItems: "center", gap: "0.75rem", textDecoration: "none" }}>
+            <div style={{ width: 200, height: 86, display: "flex", alignItems: "center", justifyContent: "center", overflow: "visible" }}>
+              <img
+                src="/media/logo4.png"
+                alt="ONE4ONE"
+                style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                onError={e => {
+                  e.target.style.display = "none";
+                  e.target.parentNode.innerHTML = '<span style="font-family:Cormorant Garamond,serif;font-weight:700;font-size:1.1rem;color:#C9A84C;letter-spacing:0.05em">1·4·1</span>';
+                }}
+              />
+            </div>
+          </a>
 
           {/* Desktop Nav */}
           <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: "2.5rem" }}>
@@ -402,6 +535,7 @@ const FALLBACK_SLIDES = [
     tag: "Registration Open",
     tagColor: "#C9A84C",
     img: "/media/upcoming.png",
+    eventId: null,
     cta: { text: "Register Now", href: REGISTER_URL, external: true },
     accentColor: "#C9A84C",
     overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.75) 0%, rgba(13,13,26,0.3) 60%, rgba(201,168,76,0.1) 100%)",
@@ -430,6 +564,13 @@ function heroSubtitle(event) {
   return parts.join(" · ") || "ONE4ONE Event";
 }
 
+function formatPrice(price) {
+  if (price === null || price === undefined || price === "") return null;
+  const num = Number(price);
+  if (isNaN(num)) return null;
+  return num === 0 ? "Free" : `KES ${num.toLocaleString()}`;
+}
+
 // ── Build UPCOMING slides — events whose date hasn't happened yet ────────────
 function buildUpcomingSlides(events, now) {
   return events
@@ -441,9 +582,11 @@ function buildUpcomingSlides(events, now) {
       title: heroTitleCase(ev.title),
       subtitle: heroSubtitle(ev),
       date: heroFormatDate(ev.event_date),
+      price: formatPrice(ev.price),
       tag: "Registration Open",
       tagColor: "#C9A84C",
       img: ev.cover_image || "",
+      eventId: ev.id,
       cta: { text: "Register Now", href: REGISTER_URL, external: true },
       accentColor: "#C9A84C",
       overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.75) 0%, rgba(13,13,26,0.3) 60%, rgba(201,168,76,0.1) 100%)",
@@ -465,6 +608,7 @@ function buildPastSlides(events, now) {
       tag: "Completed",
       tagColor: "#4ade80",
       img: ev.cover_image || "",
+      eventId: ev.id,
       cta: { text: "View Gallery", href: "#gallery", external: false },
       accentColor: "#C9A84C",
       overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.78) 0%, rgba(13,13,26,0.35) 60%, rgba(201,168,76,0.08) 100%)",
@@ -494,14 +638,14 @@ async function fetchHeroData() {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-function HeroSlideshow({ onImageClick }) {
-  const [slides, setSlides]           = useState(FALLBACK_SLIDES);
-  const [heroReady, setHeroReady]     = useState(false); // true once API resolves
-  const [current, setCurrent]         = useState(0);
-  const [prev, setPrev]               = useState(null);
-  const [loaded, setLoaded]           = useState(false);
+function HeroSlideshow({ onImageClick, onRegisterClick }) {
+  const [slides, setSlides] = useState(FALLBACK_SLIDES);
+  const [heroReady, setHeroReady] = useState(false); // true once API resolves
+  const [current, setCurrent] = useState(0);
+  const [prev, setPrev] = useState(null);
+  const [loaded, setLoaded] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const intervalRef                   = useRef(null);
+  const intervalRef = useRef(null);
 
   // ── Load from API ──
   useEffect(() => {
@@ -548,9 +692,9 @@ function HeroSlideshow({ onImageClick }) {
 
   const [ref, statsVisible] = useInView(0.1);
   const stats = [
-    { value: "2",   suffix: "+", label: "Events"   },
-    { value: "100", suffix: "+", label: "Athletes"  },
-    { value: "3",   suffix: "",  label: "Countries" },
+    { value: "2", suffix: "+", label: "Events" },
+    { value: "100", suffix: "+", label: "Athletes" },
+    { value: "3", suffix: "", label: "Countries" },
   ];
   const c1 = useCounter(stats[0].value, statsVisible);
   const c2 = useCounter(stats[1].value, statsVisible);
@@ -621,18 +765,34 @@ function HeroSlideshow({ onImageClick }) {
               <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.8rem", color: slide.accentColor, letterSpacing: "0.08em" }}>{slide.date}</span>
             </>
           )}
+          {slide.price && (
+            <>
+              <span style={{ width: 1, height: 16, background: "rgba(255,255,255,0.2)" }} />
+              <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.8rem", color: slide.accentColor, letterSpacing: "0.08em" }}>{slide.price}</span>
+            </>
+          )}
         </div>
 
         {/* CTAs */}
         <div key={`cta-${current}`} style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "3.5rem", animation: loaded ? "fadeUp 0.8s 0.45s both cubic-bezier(0.16,1,0.3,1)" : "none" }}>
-          <a
-            href={slide.cta.href}
-            target={slide.cta.external ? "_blank" : undefined}
-            rel={slide.cta.external ? "noopener noreferrer" : undefined}
-            className="btn-primary"
-            style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.85rem 2rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 8px 32px rgba(201,168,76,0.4)" }}>
-            {slide.cta.text} <ArrowRight />
-          </a>
+          {slide.type === "upcoming" && slide.eventId ? (
+            <button
+              type="button"
+              onClick={() => onRegisterClick(slide.eventId, slide.title.replace(/\n/g, " "))}
+              className="btn-primary"
+              style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.85rem 2rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", border: "none", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 8px 32px rgba(201,168,76,0.4)" }}>
+              {slide.cta.text} <ArrowRight />
+            </button>
+          ) : (
+            <a
+              href={slide.cta.href}
+              target={slide.cta.external ? "_blank" : undefined}
+              rel={slide.cta.external ? "noopener noreferrer" : undefined}
+              className="btn-primary"
+              style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.85rem 2rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 8px 32px rgba(201,168,76,0.4)" }}>
+              {slide.cta.text} <ArrowRight />
+            </a>
+          )}
           <a href="#about" className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.85)", padding: "0.85rem 2rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: "0.82rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", border: "1px solid rgba(255,255,255,0.15)", transition: "all 0.3s", backdropFilter: "blur(8px)" }}>
             Learn More
           </a>
@@ -795,27 +955,27 @@ function isPast(dateStr) {
 
 const CalIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+    <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
   </svg>
 );
 const PinIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+    <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
   </svg>
 );
 const UsersIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
   </svg>
 );
 const ArrowRightIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+    <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
   </svg>
 );
 const RefreshIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+    <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
   </svg>
 );
 
@@ -832,21 +992,24 @@ function SkeletonCard() {
   );
 }
 
-function UpcomingCard({ event, index, visible, onImageClick }) {
+function UpcomingCard({ event, index, visible, onImageClick, onRegisterClick }) {
   const [hovered, setHovered] = useState(false);
 
   const participantLabel =
     event.max_participants
       ? `${event.max_participants} Spots`
       : event.participants_count
-      ? `${event.participants_count} Registered`
-      : null;
+        ? `${event.participants_count} Registered`
+        : null;
+
+  const priceLabel = formatPrice(event.price);
 
   const meta = [
-    event.event_date  && { icon: <CalIcon />,   text: formatEventDate(event.event_date) },
-    event.location    && { icon: <PinIcon />,   text: event.location },
-    participantLabel  && { icon: <UsersIcon />, text: participantLabel },
-    event.distance    && { icon: null,           text: `🏃 ${event.distance}` },
+    event.event_date && { icon: <CalIcon />, text: formatEventDate(event.event_date) },
+    event.location && { icon: <PinIcon />, text: event.location },
+    participantLabel && { icon: <UsersIcon />, text: participantLabel },
+    event.distance && { icon: null, text: `🏃 ${event.distance}` },
+    priceLabel && { icon: null, text: `💰 ${priceLabel}` },
   ].filter(Boolean);
 
   return (
@@ -920,11 +1083,14 @@ function UpcomingCard({ event, index, visible, onImageClick }) {
           ))}
         </div>
 
-        <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", padding: "0.85rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 20px rgba(201,168,76,0.3)", transition: "all 0.3s" }}
+        <button
+          type="button"
+          onClick={() => onRegisterClick(event.id, event.title)}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", padding: "0.85rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 20px rgba(201,168,76,0.3)", transition: "all 0.3s" }}
           onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 8px 32px rgba(201,168,76,0.45)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
           onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 4px 20px rgba(201,168,76,0.3)"; e.currentTarget.style.transform = "none"; }}>
           Register Now <ArrowRightIcon />
-        </a>
+        </button>
       </div>
     </div>
   );
@@ -938,8 +1104,8 @@ function PastEventCard({ event, index, visible, onImageClick, onCertClick }) {
   const certificates = event.certificates || [];
 
   const meta = [
-    event.event_date && { icon: <CalIcon />,   text: formatEventDate(event.event_date) },
-    event.location   && { icon: <PinIcon />,   text: event.location },
+    event.event_date && { icon: <CalIcon />, text: formatEventDate(event.event_date) },
+    event.location && { icon: <PinIcon />, text: event.location },
     event.participants_count && { icon: <UsersIcon />, text: `${event.participants_count} Participants` },
   ].filter(Boolean);
 
@@ -998,7 +1164,7 @@ function PastEventCard({ event, index, visible, onImageClick, onCertClick }) {
 
         {/* Expand chevron */}
         <div style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.35)", transition: "all 0.3s", transform: expanded ? "rotate(180deg)" : "none", flexShrink: 0 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
         </div>
       </div>
 
@@ -1129,7 +1295,7 @@ function SectionLabel({ eyebrow, heading, visible, delay = 0 }) {
   );
 }
 
-function Events({ onImageClick, onCertClick }) {
+function Events({ onImageClick, onCertClick, onRegisterClick }) {
   const [ref, visible] = useInView();
 
   const [allEvents, setAllEvents] = useState([]);
@@ -1153,10 +1319,10 @@ function Events({ onImageClick, onCertClick }) {
     ],
     certificates: [
       { name: "Christopher", file: "/certificates/cert 1.pdf" },
-      { name: "Meek",        file: "/certificates/Meek.pdf"   },
-      { name: "Timothy",     file: "/certificates/Timothy.pdf" },
-      { name: "Wambui",      file: "/certificates/Wambui.pdf"  },
-      { name: "Peter",       file: "/certificates/Peter.pdf"   },
+      { name: "Meek", file: "/certificates/Meek.pdf" },
+      { name: "Timothy", file: "/certificates/Timothy.pdf" },
+      { name: "Wambui", file: "/certificates/Wambui.pdf" },
+      { name: "Peter", file: "/certificates/Peter.pdf" },
     ],
     cover_image: "/media/events/mtkd - 6.png",
   };
@@ -1223,7 +1389,7 @@ function Events({ onImageClick, onCertClick }) {
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "1.5rem" }}>
               {upcoming.map((event, i) => (
-                <UpcomingCard key={event.id} event={event} index={i} visible={visible} onImageClick={onImageClick} />
+                <UpcomingCard key={event.id} event={event} index={i} visible={visible} onImageClick={onImageClick} onRegisterClick={onRegisterClick} />
               ))}
             </div>
           )}
@@ -1310,14 +1476,14 @@ function guessLabel(eventTitle = "") {
 function Gallery({ onImageClick }) {
   const [ref, visible] = useInView();
 
-  const [allPhotos, setAllPhotos]     = useState([]);
+  const [allPhotos, setAllPhotos] = useState([]);
   const [loadingMedia, setLoadingMedia] = useState(true);
-  const [mediaError, setMediaError]   = useState(null);
+  const [mediaError, setMediaError] = useState(null);
 
   const [activeIndex, setActiveIndex] = useState(0);
-  const [prevIndex, setPrevIndex]     = useState(null);
-  const [paused, setPaused]           = useState(false);
-  const intervalRef                   = useRef(null);
+  const [prevIndex, setPrevIndex] = useState(null);
+  const [paused, setPaused] = useState(false);
+  const intervalRef = useRef(null);
 
   const thumbsContainerRef = useRef(null);
 
@@ -1325,8 +1491,8 @@ function Gallery({ onImageClick }) {
 
   const socialLinks = [
     { icon: <InstagramIcon size={16} />, name: "Instagram", url: "https://www.instagram.com/one4oneke?utm_source=qr" },
-    { icon: <FacebookIcon  size={16} />, name: "Facebook",  url: "https://www.facebook.com/share/19MM5AwrUC/?mibextid=wwXIfr" },
-    { icon: <TwitterIcon   size={16} />, name: "Twitter",   url: "https://www.twitter.com/one4one_placeholder" },
+    { icon: <FacebookIcon size={16} />, name: "Facebook", url: "https://www.facebook.com/share/19MM5AwrUC/?mibextid=wwXIfr" },
+    { icon: <TwitterIcon size={16} />, name: "Twitter", url: "https://www.twitter.com/one4one_placeholder" },
   ];
 
   useEffect(() => {
@@ -1346,7 +1512,7 @@ function Gallery({ onImageClick }) {
     return () => { cancelled = true; };
   }, []);
 
-  const filters  = ["All", ...Array.from(new Set(allPhotos.map(p => guessLabel(p.event_title))))];
+  const filters = ["All", ...Array.from(new Set(allPhotos.map(p => guessLabel(p.event_title))))];
   const filtered = filter === "All" ? allPhotos : allPhotos.filter(p => guessLabel(p.event_title) === filter);
 
   useEffect(() => {
@@ -1375,9 +1541,9 @@ function Gallery({ onImageClick }) {
     if (!container) return;
     const thumb = container.querySelector(`[data-thumb="${activeIndex}"]`);
     if (!thumb) return;
-    const containerLeft  = container.getBoundingClientRect().left;
-    const thumbLeft      = thumb.getBoundingClientRect().left;
-    const offset         = thumbLeft - containerLeft - container.clientWidth / 2 + thumb.clientWidth / 2;
+    const containerLeft = container.getBoundingClientRect().left;
+    const thumbLeft = thumb.getBoundingClientRect().left;
+    const offset = thumbLeft - containerLeft - container.clientWidth / 2 + thumb.clientWidth / 2;
     container.scrollLeft += offset;
   }, [activeIndex]);
 
@@ -1393,10 +1559,10 @@ function Gallery({ onImageClick }) {
   const activePhoto = filtered[activeIndex] || null;
 
   const KB_VARIANTS = [
-    { transformStart: "scale(1.08) translate(0%,    0%)",    transformEnd: "scale(1.18) translate(-2%, -1%)" },
-    { transformStart: "scale(1.06) translate(1%,    1%)",    transformEnd: "scale(1.15) translate(-1%, -2%)" },
-    { transformStart: "scale(1.1)  translate(-1.5%, 0%)",    transformEnd: "scale(1.2)  translate(1%,   1%)" },
-    { transformStart: "scale(1.07) translate(0%,   -1%)",    transformEnd: "scale(1.16) translate(2%,   0%)" },
+    { transformStart: "scale(1.08) translate(0%,    0%)", transformEnd: "scale(1.18) translate(-2%, -1%)" },
+    { transformStart: "scale(1.06) translate(1%,    1%)", transformEnd: "scale(1.15) translate(-1%, -2%)" },
+    { transformStart: "scale(1.1)  translate(-1.5%, 0%)", transformEnd: "scale(1.2)  translate(1%,   1%)" },
+    { transformStart: "scale(1.07) translate(0%,   -1%)", transformEnd: "scale(1.16) translate(2%,   0%)" },
   ];
 
   const SkeletonSlideshow = () => (
@@ -1530,13 +1696,13 @@ function Gallery({ onImageClick }) {
                     style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", zIndex: 6, width: 46, height: 46, borderRadius: "50%", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
                     onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.25)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.5)"; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "rgba(0,0,0,0.55)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
                   </button>
                   <button onClick={e => { e.stopPropagation(); next(); }}
                     style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", zIndex: 6, width: 46, height: 46, borderRadius: "50%", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
                     onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,168,76,0.25)"; e.currentTarget.style.borderColor = "rgba(201,168,76,0.5)"; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "rgba(0,0,0,0.55)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
                   </button>
                 </>
               )}
@@ -1893,23 +2059,27 @@ function Footer() {
 export default function HomePage() {
   const [imageModal, setImageModal] = useState(null);
   const [certModal, setCertModal] = useState(null);
+  const [regModal, setRegModal] = useState(null); // { eventId, eventTitle }
+
+  const openRegisterModal = (eventId, eventTitle) => setRegModal({ eventId, eventTitle });
 
   return (
     <>
       <style>{GLOBAL_CSS}</style>
       <NoiseOverlay />
       <Navbar />
-      <HeroSlideshow onImageClick={(src, alt) => setImageModal({ src, alt })} />
+      <HeroSlideshow onImageClick={(src, alt) => setImageModal({ src, alt })} onRegisterClick={openRegisterModal} />
       <TickerBanner />
       <About />
       <WhatWeOrganize />
-      <Events onImageClick={(src, alt) => setImageModal({ src, alt })} onCertClick={(cert) => setCertModal(cert)} />
+      <Events onImageClick={(src, alt) => setImageModal({ src, alt })} onCertClick={(cert) => setCertModal(cert)} onRegisterClick={openRegisterModal} />
       <Gallery onImageClick={(src, alt) => setImageModal({ src, alt })} />
       <Results />
       <Contact />
       <Footer />
       {imageModal && <ImageModal src={imageModal.src} alt={imageModal.alt} onClose={() => setImageModal(null)} />}
       {certModal && <CertificateModal cert={certModal} onClose={() => setCertModal(null)} />}
+      {regModal && <RegistrationModal eventId={regModal.eventId} eventTitle={regModal.eventTitle} onClose={() => setRegModal(null)} />}
     </>
   );
 }
