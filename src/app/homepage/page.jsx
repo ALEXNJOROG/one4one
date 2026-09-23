@@ -279,11 +279,55 @@ function CertificateModal({ cert, onClose }) {
   );
 }
 
+/* ════════════════════════════════════════════════════════════════════════
+   DROP-IN REPLACEMENT for the "Registration Modal" section of HomePage.jsx
+
+   WHAT TO DO:
+   1. In your file, find the comment:
+        // ── Registration Modal ────────────────────────────────────────────────
+      and select everything from `function RegistrationModal({ eventId,` down
+      to the closing `}` right before the next comment
+        // ── Noise texture overlay ─────────────────────────────────────────────
+   2. Delete that whole block and paste in the code below instead.
+   3. Also make the two one-line overlay-opacity tweaks in ImageModal and
+      CertificateModal — see the note at the very bottom of this file.
+
+   BACKEND FIELD NAMES:
+   The four new fields are sent in the POST body as:
+     race_distance   -> string  ("42kms" | "21kms" | "10km")
+     recovery_games  -> string  ("yes" | "no")
+     how_heard       -> array of strings (one or more of the 6 options)
+     agree_terms     -> boolean (true required to submit)
+   These are PLACEHOLDER keys — swap them for whatever your backend team
+   confirms. They're all in one place (search for "TODO: confirm field name")
+   so it's a quick find-and-replace once you have the real names.
+   ════════════════════════════════════════════════════════════════════════ */
+
 // ── Registration Modal ────────────────────────────────────────────────────────
+const RACE_OPTIONS = ["42kms", "21kms", "10km"];
+const HOW_HEARD_OPTIONS = [
+  "Referral from a friend",
+  "Facebook",
+  "Instagram",
+  "TikTok",
+  "WhatsApp groups",
+  "Running Coach",
+];
+
 function RegistrationModal({ eventId, eventTitle, onClose }) {
-  const [form, setForm] = useState({ full_name: "", email: "", phone_number: "", tickets_bought: 1 });
+  const [form, setForm] = useState({
+    full_name: "",
+    email: "",
+    phone_number: "",
+    tickets_bought: 1,
+    race_distance: "",   // TODO: confirm field name — "Your Race"
+    recovery_games: "",  // TODO: confirm field name — "yes" | "no"
+    how_heard: [],        // TODO: confirm field name — array
+    agree_terms: false,   // TODO: confirm field name — waiver + privacy consent
+  });
   const [status, setStatus] = useState("idle"); // idle | submitting | success | error
   const [errorMsg, setErrorMsg] = useState("");
+  const [termsOpen, setTermsOpen] = useState(false);
 
   useEffect(() => {
     const handleKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -295,7 +339,6 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === "tickets_bought") {
-      // Keep it a clean positive integer, but allow the field to be cleared while typing
       const num = value === "" ? "" : Math.max(1, parseInt(value, 10) || 1);
       setForm({ ...form, tickets_bought: num });
     } else {
@@ -303,11 +346,33 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
     }
   };
 
+  const selectRace = (val) => setForm(f => ({ ...f, race_distance: val }));
+  const selectRecovery = (val) => setForm(f => ({ ...f, recovery_games: val }));
+  const toggleHeard = (val) => setForm(f => ({
+    ...f,
+    how_heard: f.how_heard.includes(val)
+      ? f.how_heard.filter(v => v !== val)
+      : [...f.how_heard, val],
+  }));
+  const toggleAgree = () => setForm(f => ({ ...f, agree_terms: !f.agree_terms }));
+
+  // Every field below is mandatory, including the race, recovery-games
+  // answer, at least one "how did you hear" option, and the terms checkbox.
+  const isValid =
+    form.full_name.trim() &&
+    form.email.trim() &&
+    form.phone_number.trim() &&
+    form.tickets_bought &&
+    form.race_distance &&
+    form.recovery_games &&
+    form.how_heard.length > 0 &&
+    form.agree_terms;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.full_name.trim() || !form.email.trim() || !form.phone_number.trim() || !form.tickets_bought) {
+    if (!isValid) {
       setStatus("error");
-      setErrorMsg("Please fill in all fields.");
+      setErrorMsg("Please complete every field — including your race, how you heard about us, and the terms agreement — before submitting.");
       return;
     }
     setStatus("submitting");
@@ -321,6 +386,10 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
           email: form.email.trim(),
           phone_number: form.phone_number.trim(),
           tickets_bought: Number(form.tickets_bought) || 1,
+          race_distance: form.race_distance,     // TODO: confirm field name
+          recovery_games: form.recovery_games,   // TODO: confirm field name
+          how_heard: form.how_heard,              // TODO: confirm field name
+          agree_terms: form.agree_terms,          // TODO: confirm field name
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -334,12 +403,16 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
     }
   };
 
+  const labelStyle = { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "0.5rem", letterSpacing: "0.1em", textTransform: "uppercase" };
+
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.95)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.25rem", animation: "fadeIn 0.2s ease" }}>
-      <div onClick={e => e.stopPropagation()} style={{ position: "relative", width: "min(460px, 95vw)", borderRadius: 20, overflow: "hidden", background: "#0d0d1a", border: "1px solid rgba(201,168,76,0.25)", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 32px 80px rgba(0,0,0,0.6)" }}>
+    // NOTE: overlay dimmed from 0.95 → 0.75 so page content behind the modal reads
+    // through a bit more. Tweak the 0.75 to taste (e.g. 0.65 for even lighter).
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.25rem", animation: "fadeIn 0.2s ease" }}>
+      <div onClick={e => e.stopPropagation()} style={{ position: "relative", width: "min(460px, 95vw)", maxHeight: "90vh", borderRadius: 20, overflow: "hidden", background: "#0d0d1a", border: "1px solid rgba(201,168,76,0.25)", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 32px 80px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column" }}>
 
         {/* Header */}
-        <div style={{ background: "linear-gradient(135deg, rgba(201,168,76,0.15), rgba(13,13,26,0.9))", padding: "1.5rem 1.75rem", borderBottom: "1px solid rgba(201,168,76,0.15)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem" }}>
+        <div style={{ background: "linear-gradient(135deg, rgba(201,168,76,0.15), rgba(13,13,26,0.9))", padding: "1.5rem 1.75rem", borderBottom: "1px solid rgba(201,168,76,0.15)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexShrink: 0 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.5rem" }}>
               <div style={{ width: 22, height: 1, background: "#C9A84C" }} />
@@ -354,7 +427,7 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
 
         {/* Body */}
         {status === "success" ? (
-          <div style={{ padding: "3rem 1.75rem", textAlign: "center" }}>
+          <div style={{ padding: "3rem 1.75rem", textAlign: "center", overflowY: "auto" }}>
             <div style={{ fontSize: "2.75rem", marginBottom: "1rem" }}>✅</div>
             <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "#fff", fontSize: "1.5rem", marginBottom: "0.6rem" }}>You're Registered!</h3>
             <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.45)", fontSize: "0.88rem", lineHeight: 1.7, marginBottom: "1.75rem" }}>
@@ -365,7 +438,8 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ padding: "1.75rem" }}>
+          <form onSubmit={handleSubmit} style={{ padding: "1.75rem", overflowY: "auto" }}>
+            {/* ── Existing fields (unchanged) ───────────────────────────── */}
             {[
               { label: "Full Name", name: "full_name", placeholder: "John Doe", type: "text" },
               { label: "Email", name: "email", placeholder: "john@example.com", type: "email" },
@@ -373,7 +447,7 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
               { label: "Tickets", name: "tickets_bought", placeholder: "1", type: "number", min: 1 },
             ].map(f => (
               <div key={f.name} style={{ marginBottom: "1.1rem" }}>
-                <label style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "0.5rem", letterSpacing: "0.1em", textTransform: "uppercase" }}>{f.label}</label>
+                <label style={labelStyle}>{f.label}</label>
                 <input
                   type={f.type}
                   name={f.name}
@@ -389,6 +463,137 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
               </div>
             ))}
 
+            {/* ── NEW: Your Race (single choice) ─────────────────────────── */}
+            <div style={{ marginBottom: "1.1rem" }}>
+              <label style={labelStyle}>Your Race</label>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                {RACE_OPTIONS.map(opt => {
+                  const checked = form.race_distance === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => selectRace(opt)}
+                      disabled={status === "submitting"}
+                      style={{
+                        flex: "1 1 100px", padding: "0.7rem 0.5rem", borderRadius: 8,
+                        border: `1.5px solid ${checked ? "#C9A84C" : "rgba(255,255,255,0.12)"}`,
+                        background: checked ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.03)",
+                        color: checked ? "#e8c96a" : "rgba(255,255,255,0.65)",
+                        fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem",
+                        cursor: status === "submitting" ? "not-allowed" : "pointer", transition: "all 0.2s",
+                      }}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── NEW: Recovery Games (yes/no) ───────────────────────────── */}
+            <div style={{ marginBottom: "1.1rem" }}>
+              <label style={labelStyle}>Will you participate in Recovery Games?</label>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                {["yes", "no"].map(opt => {
+                  const checked = form.recovery_games === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => selectRecovery(opt)}
+                      disabled={status === "submitting"}
+                      style={{
+                        flex: 1, padding: "0.7rem 0.5rem", borderRadius: 8, textTransform: "capitalize",
+                        border: `1.5px solid ${checked ? "#C9A84C" : "rgba(255,255,255,0.12)"}`,
+                        background: checked ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.03)",
+                        color: checked ? "#e8c96a" : "rgba(255,255,255,0.65)",
+                        fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem",
+                        cursor: status === "submitting" ? "not-allowed" : "pointer", transition: "all 0.2s",
+                      }}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── NEW: How did you learn about us (multi-select) ─────────── */}
+            <div style={{ marginBottom: "1.1rem" }}>
+              <label style={labelStyle}>How Did You Learn About Us?</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                {HOW_HEARD_OPTIONS.map(opt => {
+                  const checked = form.how_heard.includes(opt);
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => toggleHeard(opt)}
+                      disabled={status === "submitting"}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 0.7rem", borderRadius: 8,
+                        border: `1.5px solid ${checked ? "#C9A84C" : "rgba(255,255,255,0.1)"}`,
+                        background: checked ? "rgba(201,168,76,0.1)" : "rgba(255,255,255,0.03)",
+                        cursor: status === "submitting" ? "not-allowed" : "pointer", transition: "all 0.2s", textAlign: "left",
+                      }}
+                    >
+                      <span style={{ width: 15, height: 15, borderRadius: 4, flexShrink: 0, border: `1.5px solid ${checked ? "#C9A84C" : "rgba(255,255,255,0.25)"}`, background: checked ? "#C9A84C" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {checked && <span style={{ color: "#0d0d1a", fontSize: "0.6rem", fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                      </span>
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.74rem", color: checked ? "#e8c96a" : "rgba(255,255,255,0.6)" }}>{opt}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── NEW: Terms, Waiver & Privacy — collapsed by default ─────── */}
+            <div style={{ marginBottom: "1rem", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, overflow: "hidden" }}>
+              <button
+                type="button"
+                onClick={() => setTermsOpen(o => !o)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", background: "rgba(255,255,255,0.03)", border: "none", cursor: "pointer" }}
+              >
+                <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", color: "rgba(255,255,255,0.7)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  Terms, Waiver &amp; Privacy Notice
+                </span>
+                <span style={{ color: "#C9A84C", display: "inline-block", transform: termsOpen ? "rotate(180deg)" : "none", transition: "transform 0.25s" }}>▾</span>
+              </button>
+
+              {termsOpen && (
+                <div style={{ padding: "1rem", maxHeight: 220, overflowY: "auto", borderTop: "1px solid rgba(255,255,255,0.06)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", lineHeight: 1.65, color: "rgba(255,255,255,0.45)" }}>
+                  <p style={{ fontWeight: 700, color: "rgba(255,255,255,0.65)", marginBottom: "0.5rem", fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", letterSpacing: "0.04em", textTransform: "uppercase" }}>Declaration / Waiver</p>
+                  <p style={{ marginBottom: "0.6rem" }}>I acknowledge that the organisers will not be liable for any harm suffered by me due to the materialization of an obvious risk to my participation in a dangerous recreational activity. Further,</p>
+                  <p style={{ marginBottom: "0.6rem" }}>A) I know that running is a potentially hazardous activity. I should not enter and run unless I am medically able and properly trained. I agree to abide by any decision of an event official relative to my ability to safely complete the run. I hereby certify that I am in good health and I have trained to run the distance of the race, which I am entering.</p>
+                  <p style={{ marginBottom: "0.6rem" }}>B) I assume all risks associated with running in this event including, but not limited to: falls, contact with other participants, the effects of weather, including high heat and/or humidity, high altitude, traffic and the conditions of the road, all such risks being known and appreciated by me.</p>
+                  <p style={{ marginBottom: "0.6rem" }}>C) Having read this waiver and knowing these facts and in consideration of your accepting my entry into this running event, I, for myself and anyone entitled to act on my behalf, waive and release One4One, the Run Event organizer, their partners officers, directors, agents, volunteers and employees, all companies or locations in which events or segments of events are held, all sponsors, their representatives and successors, from all claims or liabilities of any kind arising out of my participation in this event.</p>
+                  <p style={{ marginBottom: "0.6rem" }}>D) I grant permission to all of the foregoing to use any photographs, motion pictures, recordings, or any other record of this event for any legitimate purpose.</p>
+                  <p>E) I authorize the organizers to select and secure medical attention including any medical transport as may be necessary for me as a result of injuries or other events requiring emergency care while I am in attendance at the event.</p>
+
+                  <p style={{ fontWeight: 700, color: "rgba(255,255,255,0.65)", margin: "1rem 0 0.5rem", fontFamily: "'Syne', sans-serif", fontSize: "0.7rem", letterSpacing: "0.04em", textTransform: "uppercase" }}>Personal Details &amp; Data Privacy Consent</p>
+                  <p>In order for One4One to administer the Running event and for your own safety and security, One4One will need to process your personal data, including but not limited to your phone number and email address, next of kin name and contact details and other information that is necessary for the administration of this Run. By completing and submitting this form, you are providing consent to One4One to collect and process your personal data. Your personal data will only be used in connection to the administration of the run. Please contact Gen Nyaruai +254722943271 if you have any questions or concerns regarding the processing of your personal data.</p>
+                </div>
+              )}
+            </div>
+
+            {/* ── NEW: single mandatory agreement checkbox ─────────────────
+               Covers both the waiver above AND the privacy consent above,
+               so there's only one checkbox to tick instead of two. */}
+            <button
+              type="button"
+              onClick={toggleAgree}
+              disabled={status === "submitting"}
+              style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem", width: "100%", background: "none", border: "none", padding: 0, cursor: status === "submitting" ? "not-allowed" : "pointer", textAlign: "left", marginBottom: "1.25rem" }}
+            >
+              <span style={{ width: 17, height: 17, marginTop: 1, borderRadius: 4, flexShrink: 0, border: `1.5px solid ${form.agree_terms ? "#C9A84C" : "rgba(255,255,255,0.3)"}`, background: form.agree_terms ? "#C9A84C" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {form.agree_terms && <span style={{ color: "#0d0d1a", fontSize: "0.68rem", fontWeight: 900, lineHeight: 1 }}>✓</span>}
+              </span>
+              <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.77rem", color: "rgba(255,255,255,0.55)", lineHeight: 1.5 }}>
+                I have read and agree to the Terms &amp; Conditions, Waiver of Liability, and Data Privacy Consent above.
+              </span>
+            </button>
+
             {status === "error" && errorMsg && (
               <div style={{ marginBottom: "1.1rem", padding: "0.75rem 1rem", borderRadius: 8, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", color: "#fca5a5", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem" }}>
                 {errorMsg}
@@ -397,9 +602,9 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
 
             <button
               type="submit"
-              disabled={status === "submitting"}
+              disabled={status === "submitting" || !isValid}
               className="btn-primary"
-              style={{ width: "100%", padding: "1rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.88rem", cursor: status === "submitting" ? "not-allowed" : "pointer", opacity: status === "submitting" ? 0.7 : 1, boxShadow: "0 4px 24px rgba(201,168,76,0.35)", transition: "all 0.3s", letterSpacing: "0.08em", textTransform: "uppercase" }}
+              style={{ width: "100%", padding: "1rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.88rem", cursor: (status === "submitting" || !isValid) ? "not-allowed" : "pointer", opacity: (status === "submitting" || !isValid) ? 0.55 : 1, boxShadow: "0 4px 24px rgba(201,168,76,0.35)", transition: "all 0.3s", letterSpacing: "0.08em", textTransform: "uppercase" }}
             >
               {status === "submitting" ? "Submitting..." : "Submit"}
             </button>
@@ -411,6 +616,19 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
     </div>
   );
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   ALSO DO — the other two overlay tweaks (ImageModal & CertificateModal):
+
+   In ImageModal, find:
+     background: "rgba(0,0,0,0.95)"
+   change to:
+     background: "rgba(0,0,0,0.75)"
+
+   In CertificateModal, find the same line and change it the same way.
+
+   (The RegistrationModal above already has this change baked in.)
+   ════════════════════════════════════════════════════════════════════════ */
 
 // ── Noise texture overlay ─────────────────────────────────────────────────────
 function NoiseOverlay() {
