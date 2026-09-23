@@ -309,8 +309,8 @@ const HOW_HEARD_OPTIONS = [
   "Referral from a friend",
   "Facebook",
   "Instagram",
-  "TikTok",
-  "WhatsApp groups",
+  "Tiktok",
+  "Whatsapp groups",
   "Running Coach",
 ];
 
@@ -322,7 +322,7 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
     tickets_bought: 1,
     race_distance: "",   // TODO: confirm field name — "Your Race"
     recovery_games: "",  // TODO: confirm field name — "yes" | "no"
-    how_heard: [],        // TODO: confirm field name — array
+    how_heard: "",        // TODO: confirm field name — array
     agree_terms: false,   // TODO: confirm field name — waiver + privacy consent
   });
   const [status, setStatus] = useState("idle"); // idle | submitting | success | error
@@ -348,12 +348,7 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
 
   const selectRace = (val) => setForm(f => ({ ...f, race_distance: val }));
   const selectRecovery = (val) => setForm(f => ({ ...f, recovery_games: val }));
-  const toggleHeard = (val) => setForm(f => ({
-    ...f,
-    how_heard: f.how_heard.includes(val)
-      ? f.how_heard.filter(v => v !== val)
-      : [...f.how_heard, val],
-  }));
+  const selectHeard = (val) => setForm(f => ({ ...f, how_heard: val }));
   const toggleAgree = () => setForm(f => ({ ...f, agree_terms: !f.agree_terms }));
 
   // Every field below is mandatory, including the race, recovery-games
@@ -365,7 +360,7 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
     form.tickets_bought &&
     form.race_distance &&
     form.recovery_games &&
-    form.how_heard.length > 0 &&
+    form.how_heard &&
     form.agree_terms;
 
   const handleSubmit = async (e) => {
@@ -386,10 +381,9 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
           email: form.email.trim(),
           phone_number: form.phone_number.trim(),
           tickets_bought: Number(form.tickets_bought) || 1,
-          race_distance: form.race_distance,     // TODO: confirm field name
-          recovery_games: form.recovery_games,   // TODO: confirm field name
-          how_heard: form.how_heard,              // TODO: confirm field name
-          agree_terms: form.agree_terms,          // TODO: confirm field name
+          race: parseInt(form.race_distance, 10),              // was: race_distance
+          recovery_games: form.recovery_games,   // unchanged — already correct
+          how_did_you_hear: form.how_heard,      // was: how_heard
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -524,12 +518,12 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
               <label style={labelStyle}>How Did You Learn About Us?</label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
                 {HOW_HEARD_OPTIONS.map(opt => {
-                  const checked = form.how_heard.includes(opt);
+                  const checked = form.how_heard === opt;
                   return (
                     <button
                       key={opt}
                       type="button"
-                      onClick={() => toggleHeard(opt)}
+                      onClick={() => selectHeard(opt)}
                       disabled={status === "submitting"}
                       style={{
                         display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 0.7rem", borderRadius: 8,
