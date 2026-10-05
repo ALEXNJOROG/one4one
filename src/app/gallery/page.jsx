@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { saveAuth, loadAuth, clearAuth } from "../lib/auth";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const BASE_URL = "https://backone.one4one.co";
@@ -299,99 +300,99 @@ const FALLBACK_EMOJIS = ["🏃", "🌅", "⛰️", "🥾", "📸", "🏁", "👥
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const ArrowLeft = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M19 12H5M12 19l-7-7 7-7"/>
+    <path d="M19 12H5M12 19l-7-7 7-7" />
   </svg>
 );
 const ChevronLeft = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M15 18l-6-6 6-6"/>
+    <path d="M15 18l-6-6 6-6" />
   </svg>
 );
 const ChevronRight = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 18l6-6-6-6"/>
+    <path d="M9 18l6-6-6-6" />
   </svg>
 );
 const UploadIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
   </svg>
 );
 const RefreshIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+    <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
   </svg>
 );
 const TrashIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
   </svg>
 );
 const EditIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
   </svg>
 );
 const PlusIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 );
 const CalendarIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
   </svg>
 );
 const ExternalLinkIcon = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-    <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
   </svg>
 );
 const TrophyIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="8 21 12 21 16 21"/><line x1="12" y1="17" x2="12" y2="21"/>
-    <path d="M7 4H4a2 2 0 0 0-2 2v3c0 3.31 2.69 6 6 6h.01M17 4h3a2 2 0 0 1 2 2v3c0 3.31-2.69 6-6 6H17"/>
-    <rect x="7" y="2" width="10" height="11" rx="1"/>
+    <polyline points="8 21 12 21 16 21" /><line x1="12" y1="17" x2="12" y2="21" />
+    <path d="M7 4H4a2 2 0 0 0-2 2v3c0 3.31 2.69 6 6 6h.01M17 4h3a2 2 0 0 1 2 2v3c0 3.31-2.69 6-6 6H17" />
+    <rect x="7" y="2" width="10" height="11" rx="1" />
   </svg>
 );
 const InstagramIcon = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-    <circle cx="12" cy="12" r="4"/>
-    <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none"/>
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+    <circle cx="12" cy="12" r="4" />
+    <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none" />
   </svg>
 );
 const FacebookIcon = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
   </svg>
 );
 const TwitterIcon = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
   </svg>
 );
 const LogoutIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
   </svg>
 );
 const FileZipIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-    <polyline points="14 2 14 8 20 8"/>
-    <path d="M12 12v1M12 15v1M12 18v1"/>
-    <rect x="10.5" y="9" width="3" height="2"/>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <path d="M12 12v1M12 15v1M12 18v1" />
+    <rect x="10.5" y="9" width="3" height="2" />
   </svg>
 );
 const ImageStackIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="14" height="14" rx="2"/>
-    <path d="M7 21h10a2 2 0 0 0 2-2V7"/>
-    <circle cx="8" cy="8" r="1.5"/>
-    <path d="M3 14l3.5-3.5a1.5 1.5 0 0 1 2.12 0L13 15"/>
+    <rect x="3" y="3" width="14" height="14" rx="2" />
+    <path d="M7 21h10a2 2 0 0 0 2-2V7" />
+    <circle cx="8" cy="8" r="1.5" />
+    <path d="M3 14l3.5-3.5a1.5 1.5 0 0 1 2.12 0L13 15" />
   </svg>
 );
 
@@ -587,7 +588,7 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
         price: form.price.trim() ? Number(form.price) : 0,
         max_tickets: form.max_tickets.trim() ? Number(form.max_tickets) : 0,
       };
-            let result;
+      let result;
       if (isEdit) {
         result = await api.updateEvent(event.id, payload, token);
         console.log("Updated event response:", result);
@@ -1245,7 +1246,7 @@ function Lightbox({ items, startIndex, onClose, onDelete, canDelete, token }) {
     const handle = (e) => {
       if (e.key === "Escape") onClose();
       if (e.key === "ArrowRight") setCurrent(c => (c + 1) % items.length);
-      if (e.key === "ArrowLeft")  setCurrent(c => (c - 1 + items.length) % items.length);
+      if (e.key === "ArrowLeft") setCurrent(c => (c - 1 + items.length) % items.length);
     };
     document.addEventListener("keydown", handle);
     document.body.style.overflow = "hidden";
@@ -1335,12 +1336,13 @@ function Navbar({ onUploadClick, onEventsClick, isAuthenticated, user, onLogout,
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const links = [
-    { label: "About",   href: "/#about" },
-    { label: "Events",  href: "/#events" },
+  const baseLinks = [
+    { label: "About", href: "/#about" },
+    { label: "Events", href: "/#events" },
     { label: "Gallery", href: "/gallery" },
     { label: "Results", href: "/results" },
   ];
+  const links = isAuthenticated ? [...baseLinks, { label: "Registrations", href: "/registrations" }] : baseLinks;
 
   const handleUpload = () => { if (!isAuthenticated) { onLoginClick("upload"); } else { onUploadClick(); } };
   const handleEvents = () => { if (!isAuthenticated) { onLoginClick("events"); } else { onEventsClick(); } };
@@ -1472,7 +1474,7 @@ function PageHero({ heroImages }) {
         {images.map((src, i) => (
           <div key={i} style={{ overflow: "hidden", position: "relative" }}>
             <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", animation: "heroKenBurns 10s ease-out infinite alternate" }}
-              onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i*50+200},20%,10%)`; }} />
+              onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i * 50 + 200},20%,10%)`; }} />
           </div>
         ))}
       </div>
@@ -1670,8 +1672,8 @@ function GalleryGrid({ events, allMedia, loading, error, onRefresh, onDelete, sh
             </button>
             {[
               { key: "masonry", icon: "⊞", label: "Masonry" },
-              { key: "grid",    icon: "▦", label: "Grid" },
-              { key: "featured",icon: "◫", label: "Featured" },
+              { key: "grid", icon: "▦", label: "Grid" },
+              { key: "featured", icon: "◫", label: "Featured" },
             ].map(l => (
               <button key={l.key} onClick={() => setLayout(l.key)} title={l.label} style={{ width: 36, height: 36, borderRadius: 6, border: "1px solid", borderColor: layout === l.key ? "rgba(201,168,76,0.5)" : "rgba(255,255,255,0.1)", background: layout === l.key ? "rgba(201,168,76,0.1)" : "transparent", color: layout === l.key ? "#C9A84C" : "rgba(255,255,255,0.35)", cursor: "pointer", fontSize: "0.95rem", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}>
                 {l.icon}
@@ -1772,7 +1774,7 @@ function MasonryItem({ item, index, visible, onClick }) {
         <video src={item.storage_path} style={{ width: "100%", display: "block", objectFit: "cover", pointerEvents: "none" }} muted playsInline />
       ) : (
         <img src={item.storage_path} alt={item.original_filename || item.event_title} style={{ width: "100%", display: "block", objectFit: "cover" }}
-          onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${index*33+190},20%,12%)`; ev.target.parentNode.style.minHeight = "200px"; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.5rem">${FALLBACK_EMOJIS[index % FALLBACK_EMOJIS.length]}</div>`; }} />
+          onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${index * 33 + 190},20%,12%)`; ev.target.parentNode.style.minHeight = "200px"; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.5rem">${FALLBACK_EMOJIS[index % FALLBACK_EMOJIS.length]}</div>`; }} />
       )}
       <div className="overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.92) 0%, transparent 55%)" }} />
       {isVideo && <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", borderRadius: 4, padding: "0.2rem 0.5rem", fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", color: "rgba(255,255,255,0.7)", fontWeight: 700, letterSpacing: "0.08em" }}>VIDEO</div>}
@@ -1794,7 +1796,7 @@ function GridItem({ item, index, visible, onClick }) {
         <video src={item.storage_path} style={{ width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }} muted playsInline />
       ) : (
         <img src={item.storage_path} alt={item.original_filename || item.event_title} style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${index*33+190},20%,12%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.8rem">${FALLBACK_EMOJIS[index % FALLBACK_EMOJIS.length]}</div>`; }} />
+          onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${index * 33 + 190},20%,12%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.8rem">${FALLBACK_EMOJIS[index % FALLBACK_EMOJIS.length]}</div>`; }} />
       )}
       <div className="overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.9) 0%, transparent 55%)" }} />
       {isVideo && <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(0,0,0,0.6)", borderRadius: 4, padding: "0.2rem 0.5rem", fontFamily: "'Syne', sans-serif", fontSize: "0.62rem", color: "rgba(255,255,255,0.7)", fontWeight: 700 }}>VIDEO</div>}
@@ -1838,7 +1840,7 @@ function EventGroup({ name, items, driveLink, visible, onOpen }) {
             {items.slice(1).map((item, i) => (
               <div key={item.id} className="gallery-item" onClick={() => onOpen(item)} style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "4/3", cursor: "zoom-in", background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.05)", opacity: vis ? 1 : 0, transition: `all 0.6s ${0.18 + i * 0.07}s` }}>
                 <img src={item.storage_path} alt={item.event_title} style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i*50+200},18%,12%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.5rem">${FALLBACK_EMOJIS[(i+1) % FALLBACK_EMOJIS.length]}</div>`; }} />
+                  onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = `hsl(${i * 50 + 200},18%,12%)`; ev.target.parentNode.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.5rem">${FALLBACK_EMOJIS[(i + 1) % FALLBACK_EMOJIS.length]}</div>`; }} />
                 <div className="overlay" style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(13,13,26,0.88) 0%, transparent 55%)" }} />
                 <div className="caption" style={{ position: "absolute", bottom: 12, left: 12 }}>
                   <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: "0.82rem", color: "#fff" }}>{item.original_filename || item.event_title}</div>
@@ -1857,8 +1859,8 @@ function SocialCTA() {
   const [ref, visible] = useInView();
   const links = [
     { icon: <InstagramIcon size={18} />, name: "Instagram", url: "https://www.instagram.com/one4oneke?utm_source=qr" },
-    { icon: <FacebookIcon size={18} />, name: "Facebook",  url: "https://www.facebook.com/share/19MM5AwrUC/?mibextid=wwXIfr" },
-    { icon: <TwitterIcon size={18} />,  name: "Twitter",   url: "https://www.twitter.com/one4one_placeholder" },
+    { icon: <FacebookIcon size={18} />, name: "Facebook", url: "https://www.facebook.com/share/19MM5AwrUC/?mibextid=wwXIfr" },
+    { icon: <TwitterIcon size={18} />, name: "Twitter", url: "https://www.twitter.com/one4one_placeholder" },
   ];
   return (
     <section ref={ref} style={{ padding: "5rem 1.5rem", background: "#111122", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
@@ -1914,6 +1916,10 @@ export default function GalleryPage() {
   const [authUser, setAuthUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  useEffect(() => {
+    const saved = loadAuth();
+    if (saved.token) { setAuthToken(saved.token); setAuthUser(saved.user); }
+  }, []);
 
   const showToast = useCallback((message, type = "success") => {
     setToast({ message, type, id: Date.now() });
@@ -1992,6 +1998,7 @@ export default function GalleryPage() {
   const handleLoginSuccess = ({ token, user }) => {
     setAuthToken(token);
     setAuthUser(user);
+    saveAuth(token, user);
     setShowAuthModal(false);
     if (pendingAction === "upload") setShowUpload(true);
     else if (pendingAction === "events") setShowEventsManager(true);
@@ -2001,6 +2008,7 @@ export default function GalleryPage() {
   const handleLogout = () => {
     setAuthToken(null);
     setAuthUser(null);
+    clearAuth();
     setShowUpload(false);
     setShowEventsManager(false);
     showToast("Logged out successfully", "success");

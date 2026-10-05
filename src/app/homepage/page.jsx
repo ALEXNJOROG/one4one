@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { loadAuth } from "../lib/auth";
 
 // ── Shared config ─────────────────────────────────────────────────────────────
 const BASE_URL = "https://backone.one4one.co";
@@ -662,8 +663,10 @@ function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const links = ["About", "Events", "Gallery", "Results"];
-
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => { setIsAdmin(!!loadAuth().token); }, []);
+  const links = isAdmin ? ["About", "Events", "Gallery", "Results", "Registrations"] : ["About", "Events", "Gallery", "Results"];
+  const linkHref = (l) => (l === "Registrations" ? "/registrations" : `#${l.toLowerCase()}`);
   return (
     <>
       <nav style={{
@@ -694,7 +697,7 @@ function Navbar() {
           {/* Desktop Nav */}
           <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: "2.5rem" }}>
             {links.map(l => (
-              <a key={l} href={`#${l.toLowerCase()}`} className="nav-link" style={{ position: "relative", fontFamily: "'Syne', sans-serif", fontSize: "0.82rem", fontWeight: 600, color: scrolled ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.9)", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "color 0.25s" }}
+              <a key={l} href={linkHref(l)} className="nav-link" style={{ position: "relative", fontFamily: "'Syne', sans-serif", fontSize: "0.82rem", fontWeight: 600, color: scrolled ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.9)", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", transition: "color 0.25s" }}
                 onMouseEnter={e => e.target.style.color = "#C9A84C"}
                 onMouseLeave={e => e.target.style.color = scrolled ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.9)"}>{l}</a>
             ))}
@@ -716,7 +719,7 @@ function Navbar() {
       {/* Mobile Drawer */}
       <div className="mobile-nav-drawer" style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(320px, 85vw)", zIndex: 490, background: "rgba(10,10,20,0.98)", backdropFilter: "blur(30px)", transform: menuOpen ? "translateX(0)" : "translateX(100%)", transition: "transform 0.45s cubic-bezier(0.16,1,0.3,1)", borderLeft: "1px solid rgba(201,168,76,0.15)", padding: "6rem 2rem 2rem" }}>
         {links.map(l => (
-          <a key={l} href={`#${l.toLowerCase()}`} onClick={() => setMenuOpen(false)} style={{ display: "block", fontFamily: "'Syne', sans-serif", fontSize: "1.2rem", fontWeight: 600, color: "rgba(255,255,255,0.8)", textDecoration: "none", padding: "1rem 0", borderBottom: "1px solid rgba(255,255,255,0.05)", letterSpacing: "0.05em", textTransform: "uppercase", transition: "color 0.2s" }}
+          <a key={l} href={linkHref(l)} onClick={() => setMenuOpen(false)} style={{ display: "block", fontFamily: "'Syne', sans-serif", fontSize: "1.2rem", fontWeight: 600, color: "rgba(255,255,255,0.8)", textDecoration: "none", padding: "1rem 0", borderBottom: "1px solid rgba(255,255,255,0.05)", letterSpacing: "0.05em", textTransform: "uppercase", transition: "color 0.2s" }}
             onMouseEnter={e => e.target.style.color = "#C9A84C"}
             onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.8)"}>{l}</a>
         ))}
