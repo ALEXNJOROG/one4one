@@ -337,6 +337,15 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
     return () => { document.removeEventListener("keydown", handleKey); document.body.style.overflow = ""; };
   }, [onClose]);
 
+  const [closing, setClosing] = useState(false);
+
+useEffect(() => {
+  if (status !== "success") return;
+  const fadeTimer = setTimeout(() => setClosing(true), 30000);  // start fading at 30s
+  const closeTimer = setTimeout(() => onClose(), 30700);        // remove modal once fade ends
+  return () => { clearTimeout(fadeTimer); clearTimeout(closeTimer); };
+}, [status]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === "tickets_bought") {
@@ -403,7 +412,7 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
   return (
     // NOTE: overlay dimmed from 0.95 → 0.75 so page content behind the modal reads
     // through a bit more. Tweak the 0.75 to taste (e.g. 0.65 for even lighter).
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.25rem", animation: "fadeIn 0.2s ease" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, opacity: closing ? 0 : 1, transition: "opacity 0.7s ease", zIndex: 2000, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.25rem", animation: "fadeIn 0.2s ease" }}>
       <div onClick={e => e.stopPropagation()} style={{ position: "relative", width: "min(460px, 95vw)", maxHeight: "90vh", borderRadius: 20, overflow: "hidden", background: "#0d0d1a", border: "1px solid rgba(201,168,76,0.25)", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 32px 80px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column" }}>
 
         {/* Header */}
@@ -426,11 +435,13 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
             <div style={{ fontSize: "2.75rem", marginBottom: "1rem" }}>✅</div>
             <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "#fff", fontSize: "1.5rem", marginBottom: "0.6rem" }}>You're Registered!</h3>
             <p style={{ fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.45)", fontSize: "0.88rem", lineHeight: 1.7, marginBottom: "1.75rem" }}>
-              Thanks for signing up{form.full_name ? `, ${form.full_name.split(" ")[0]}` : ""}. We've received your details and will be in touch with more information.
+              Thanks for signing up{form.full_name ? `, ${form.full_name.split(" ")[0]}` : ""}. We've received your details. An STK has been sent to your phone.
             </p>
-            <button onClick={onClose} style={{ padding: "0.85rem 2rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Close
-            </button>
+            <div style={{ display: "inline-block", padding: "0.85rem 1.5rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", letterSpacing: "0.08em", textTransform: "uppercase", lineHeight: 1.5, textAlign: "center" }}>
+  Enter Your M-Pesa PIN to Complete Payment.
+</div>
+            
+            
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ padding: "1.75rem", overflowY: "auto" }}>
