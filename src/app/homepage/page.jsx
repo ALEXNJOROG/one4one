@@ -4,7 +4,48 @@ import { loadAuth } from "../lib/auth";
 
 // ── Shared config ─────────────────────────────────────────────────────────────
 const BASE_URL = "https://backone.one4one.co";
-const REGISTER_URL = "https://forms.gle/89SRrpkirDEChGZy7"; // Same link used everywhere "Register Now" appears
+const REGISTER_URL = "https://forms.gle/89SRrpkirDEChGZy7"; // Fallback link, used only when an event has no id
+
+// ── Registration deep-link helper ─────────────────────────────────────────────
+// Registration link format:  https://one4one.co/?register=<EVENT_ID>
+// Opening that URL pops the registration form for that event straight away.
+function setRegisterUrl(eventId) {
+  try {
+    const url = eventId
+      ? `${window.location.pathname}?register=${eventId}`
+      : window.location.pathname + window.location.hash;
+    window.history.replaceState(null, "", url);
+  } catch { /* ignore */ }
+}
+
+// Turns any http(s) URL inside plain text into a clickable link
+function Linkify({ text }) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (!/^https?:\/\//.test(part)) return part;
+        // keep trailing punctuation (. , ; ) out of the link
+        const m = part.match(/^(.*?)([.,;:!?)]*)$/);
+        const url = m[1];
+        const trail = m[2];
+        return (
+          <span key={i}>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#C9A84C", textDecoration: "underline", wordBreak: "break-all" }}
+            >
+              {url}
+            </a>
+            {trail}
+          </span>
+        );
+      })}
+    </>
+  );
+}
 
 // ── CSS Injection ─────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
@@ -131,6 +172,7 @@ const GLOBAL_CSS = `
 
   .btn-primary:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 16px 48px rgba(201,168,76,0.55) !important; }
   .btn-secondary:hover { background: rgba(201,168,76,0.12) !important; border-color: rgba(201,168,76,0.6) !important; color: var(--gold-light) !important; }
+  .reg-tag:hover { filter: brightness(1.12); transform: translateY(-1px); }
   
   .event-card:hover { transform: translateY(-6px); box-shadow: 0 32px 80px rgba(0,0,0,0.5) !important; }
   .event-card:hover .event-card-img { transform: scale(1.06); }
@@ -138,7 +180,8 @@ const GLOBAL_CSS = `
   @media (max-width: 768px) {
     .desktop-nav { display: none !important; }
     .mobile-menu-btn { display: flex !important; }
-    .hero-title { font-size: clamp(3rem, 14vw, 5rem) !important; }
+    .hero-title { font-size: clamp(2.6rem, 11.5vw, 4.5rem) !important; }
+    .hero-cta { margin-bottom: 2rem !important; }
     .stats-row { gap: 1.5rem !important; }
     .footer-grid { grid-template-columns: 1fr 1fr !important; }
   }
@@ -280,30 +323,6 @@ function CertificateModal({ cert, onClose }) {
   );
 }
 
-/* ════════════════════════════════════════════════════════════════════════
-   DROP-IN REPLACEMENT for the "Registration Modal" section of HomePage.jsx
-
-   WHAT TO DO:
-   1. In your file, find the comment:
-        // ── Registration Modal ────────────────────────────────────────────────
-      and select everything from `function RegistrationModal({ eventId,` down
-      to the closing `}` right before the next comment
-        // ── Noise texture overlay ─────────────────────────────────────────────
-   2. Delete that whole block and paste in the code below instead.
-   3. Also make the two one-line overlay-opacity tweaks in ImageModal and
-      CertificateModal — see the note at the very bottom of this file.
-
-   BACKEND FIELD NAMES:
-   The four new fields are sent in the POST body as:
-     race_distance   -> string  ("42kms" | "21kms" | "10km")
-     recovery_games  -> string  ("yes" | "no")
-     how_heard       -> array of strings (one or more of the 6 options)
-     agree_terms     -> boolean (true required to submit)
-   These are PLACEHOLDER keys — swap them for whatever your backend team
-   confirms. They're all in one place (search for "TODO: confirm field name")
-   so it's a quick find-and-replace once you have the real names.
-   ════════════════════════════════════════════════════════════════════════ */
-
 // ── Registration Modal ────────────────────────────────────────────────────────
 const RACE_OPTIONS = ["42kms", "21kms", "10km"];
 const HOW_HEARD_OPTIONS = [
@@ -321,10 +340,10 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
     email: "",
     phone_number: "",
     tickets_bought: 1,
-    race_distance: "",   // TODO: confirm field name — "Your Race"
-    recovery_games: "",  // TODO: confirm field name — "yes" | "no"
-    how_heard: "",        // TODO: confirm field name — array
-    agree_terms: false,   // TODO: confirm field name — waiver + privacy consent
+    race_distance: "",
+    recovery_games: "",
+    how_heard: "",
+    agree_terms: false,
   });
   const [status, setStatus] = useState("idle"); // idle | submitting | success | error
   const [errorMsg, setErrorMsg] = useState("");
@@ -339,12 +358,12 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
 
   const [closing, setClosing] = useState(false);
 
-useEffect(() => {
-  if (status !== "success") return;
-  const fadeTimer = setTimeout(() => setClosing(true), 30000);  // start fading at 30s
-  const closeTimer = setTimeout(() => onClose(), 30700);        // remove modal once fade ends
-  return () => { clearTimeout(fadeTimer); clearTimeout(closeTimer); };
-}, [status]);
+  useEffect(() => {
+    if (status !== "success") return;
+    const fadeTimer = setTimeout(() => setClosing(true), 30000);  // start fading at 30s
+    const closeTimer = setTimeout(() => onClose(), 30700);        // remove modal once fade ends
+    return () => { clearTimeout(fadeTimer); clearTimeout(closeTimer); };
+  }, [status]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -391,9 +410,9 @@ useEffect(() => {
           email: form.email.trim(),
           phone_number: form.phone_number.trim(),
           tickets_bought: Number(form.tickets_bought) || 1,
-          race: parseInt(form.race_distance, 10),              // was: race_distance
-          recovery_games: form.recovery_games,   // unchanged — already correct
-          how_did_you_hear: form.how_heard,      // was: how_heard
+          race: parseInt(form.race_distance, 10),
+          recovery_games: form.recovery_games,
+          how_did_you_hear: form.how_heard,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -410,8 +429,6 @@ useEffect(() => {
   const labelStyle = { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "0.5rem", letterSpacing: "0.1em", textTransform: "uppercase" };
 
   return (
-    // NOTE: overlay dimmed from 0.95 → 0.75 so page content behind the modal reads
-    // through a bit more. Tweak the 0.75 to taste (e.g. 0.65 for even lighter).
     <div onClick={onClose} style={{ position: "fixed", inset: 0, opacity: closing ? 0 : 1, transition: "opacity 0.7s ease", zIndex: 2000, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.25rem", animation: "fadeIn 0.2s ease" }}>
       <div onClick={e => e.stopPropagation()} style={{ position: "relative", width: "min(460px, 95vw)", maxHeight: "90vh", borderRadius: 20, overflow: "hidden", background: "#0d0d1a", border: "1px solid rgba(201,168,76,0.25)", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 32px 80px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column" }}>
 
@@ -438,14 +455,11 @@ useEffect(() => {
               Thanks for signing up{form.full_name ? `, ${form.full_name.split(" ")[0]}` : ""}. We've received your details. An STK has been sent to your phone.
             </p>
             <div style={{ display: "inline-block", padding: "0.85rem 1.5rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", letterSpacing: "0.08em", textTransform: "uppercase", lineHeight: 1.5, textAlign: "center" }}>
-  Enter Your M-Pesa PIN to Complete Payment.
-</div>
-            
-            
+              Enter Your M-Pesa PIN to Complete Payment.
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ padding: "1.75rem", overflowY: "auto" }}>
-            {/* ── Existing fields (unchanged) ───────────────────────────── */}
             {[
               { label: "Full Name", name: "full_name", placeholder: "John Doe", type: "text" },
               { label: "Email", name: "email", placeholder: "john@example.com", type: "email" },
@@ -469,7 +483,7 @@ useEffect(() => {
               </div>
             ))}
 
-            {/* ── NEW: Your Race (single choice) ─────────────────────────── */}
+            {/* Your Race (single choice) */}
             <div style={{ marginBottom: "1.1rem" }}>
               <label style={labelStyle}>Your Race</label>
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -497,7 +511,7 @@ useEffect(() => {
               </div>
             </div>
 
-            {/* ── NEW: Recovery Games (yes/no) ───────────────────────────── */}
+            {/* Recovery Games (yes/no) */}
             <div style={{ marginBottom: "1.1rem" }}>
               <label style={labelStyle}>Will you participate in Recovery Games?</label>
               <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -525,7 +539,7 @@ useEffect(() => {
               </div>
             </div>
 
-            {/* ── NEW: How did you learn about us (multi-select) ─────────── */}
+            {/* How did you learn about us */}
             <div style={{ marginBottom: "1.1rem" }}>
               <label style={labelStyle}>How Did You Learn About Us?</label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
@@ -554,7 +568,7 @@ useEffect(() => {
               </div>
             </div>
 
-            {/* ── NEW: Terms, Waiver & Privacy — collapsed by default ─────── */}
+            {/* Terms, Waiver & Privacy — collapsed by default */}
             <div style={{ marginBottom: "1rem", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, overflow: "hidden" }}>
               <button
                 type="button"
@@ -583,9 +597,7 @@ useEffect(() => {
               )}
             </div>
 
-            {/* ── NEW: single mandatory agreement checkbox ─────────────────
-               Covers both the waiver above AND the privacy consent above,
-               so there's only one checkbox to tick instead of two. */}
+            {/* Single mandatory agreement checkbox */}
             <button
               type="button"
               onClick={toggleAgree}
@@ -623,18 +635,114 @@ useEffect(() => {
   );
 }
 
-/* ════════════════════════════════════════════════════════════════════════
-   ALSO DO — the other two overlay tweaks (ImageModal & CertificateModal):
+// ── Event Details Modal (opened by the hero "Learn More" button) ──────────────
+function EventDetailsModal({ event, onClose, onRegister, onImageClick }) {
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handleKey);
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", handleKey); document.body.style.overflow = ""; };
+  }, [onClose]);
 
-   In ImageModal, find:
-     background: "rgba(0,0,0,0.95)"
-   change to:
-     background: "rgba(0,0,0,0.75)"
+  const upcoming = !!event.event_date && new Date(event.event_date) >= new Date();
+  const desc = (event.description || "").trim();
+  const hasDesc = desc && desc.toLowerCase() !== "to be added"; // ignore the placeholder text
+  const price = formatPrice(event.price);
+  const deadline = event.registration_deadline ? formatEventDate(event.registration_deadline) : null;
 
-   In CertificateModal, find the same line and change it the same way.
+  const details = [
+    event.event_date && { icon: <CalIcon />, label: "Date", value: formatEventDate(event.event_date) },
+    event.location && { icon: <PinIcon />, label: "Venue", value: event.location },
+    event.distance && { icon: <span>🏃</span>, label: "Distance", value: event.distance },
+    price && { icon: <span>💰</span>, label: "Entry Fee", value: price },
+    deadline && { icon: <span>⏳</span>, label: "Register By", value: deadline },
+  ].filter(Boolean);
 
-   (The RegistrationModal above already has this change baked in.)
-   ════════════════════════════════════════════════════════════════════════ */
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.78)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.25rem", animation: "fadeIn 0.2s ease" }}>
+      <div onClick={e => e.stopPropagation()} style={{ position: "relative", width: "min(560px, 95vw)", maxHeight: "90vh", borderRadius: 20, overflow: "hidden", background: "#0d0d1a", border: "1px solid rgba(201,168,76,0.25)", animation: "modalIn 0.3s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 32px 80px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column" }}>
+
+        {/* Header */}
+        <div style={{ background: "linear-gradient(135deg, rgba(201,168,76,0.15), rgba(13,13,26,0.9))", padding: "1.4rem 1.75rem", borderBottom: "1px solid rgba(201,168,76,0.15)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexShrink: 0 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.5rem" }}>
+              <div style={{ width: 22, height: 1, background: "#C9A84C" }} />
+              <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.65rem", fontWeight: 700, color: "#C9A84C", letterSpacing: "0.16em", textTransform: "uppercase" }}>Event Details</span>
+            </div>
+            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, color: "#fff", fontSize: "1.7rem", lineHeight: 1.15 }}>{event.title}</div>
+          </div>
+          <button onClick={onClose} aria-label="Close" style={{ width: 36, height: 36, flexShrink: 0, borderRadius: "50%", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C", fontSize: "1rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,0.3)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(201,168,76,0.1)"}>✕</button>
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{ overflowY: "auto", flex: 1 }}>
+
+          {/* Poster */}
+          {event.cover_image && (
+            <div
+              onClick={() => onImageClick && onImageClick(event.cover_image, event.title)}
+              style={{ position: "relative", height: 240, background: "#080812", cursor: "zoom-in", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <img src={event.cover_image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+                onError={ev => { ev.target.parentNode.style.display = "none"; }} />
+              <span style={{ position: "absolute", right: 12, bottom: 10, padding: "0.25rem 0.6rem", borderRadius: 4, background: "rgba(0,0,0,0.65)", color: "#fff", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.62rem", letterSpacing: "0.08em", textTransform: "uppercase" }}>Tap to enlarge</span>
+            </div>
+          )}
+
+          <div style={{ padding: "1.5rem 1.75rem 1.75rem" }}>
+
+            {/* Status */}
+            <span style={{ display: "inline-block", marginBottom: "1.1rem", padding: "0.25rem 0.8rem", borderRadius: 3, background: upcoming ? "linear-gradient(135deg,#C9A84C,#b8962e)" : "rgba(34,197,94,0.12)", color: upcoming ? "#0d0d1a" : "#4ade80", border: upcoming ? "none" : "1px solid rgba(34,197,94,0.25)", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.66rem", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+              {upcoming ? "Registration Open" : "Completed"}
+            </span>
+
+            {/* About */}
+            <h4 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", color: "rgba(255,255,255,0.55)", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: "0.6rem" }}>About this event</h4>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", color: hasDesc ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.5)", fontSize: "0.95rem", lineHeight: 1.75, whiteSpace: "pre-line", marginBottom: "1.6rem" }}>
+              {hasDesc ? <Linkify text={desc} /> : "More details about this event will be shared soon."}
+            </p>
+
+            {/* Details list */}
+            {details.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.7rem", padding: "1.1rem 1.2rem", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {details.map((d, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "0.8rem" }}>
+                    <span style={{ color: "#C9A84C", flexShrink: 0, width: 18, display: "flex", justifyContent: "center", paddingTop: 2 }}>{d.icon}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.62rem", color: "rgba(255,255,255,0.5)", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 2 }}>{d.label}</div>
+                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: "0.95rem", color: "#fff", lineHeight: 1.4 }}>{d.value}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer actions */}
+        <div style={{ padding: "1rem 1.75rem 1.25rem", borderTop: "1px solid rgba(201,168,76,0.12)", background: "#0a0a14", display: "flex", gap: "0.75rem", flexWrap: "wrap", flexShrink: 0 }}>
+          {upcoming && (
+            <button
+              type="button"
+              onClick={() => onRegister(event.id, event.title)}
+              className="btn-primary"
+              style={{ flex: "2 1 180px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 24px rgba(201,168,76,0.35)", transition: "all 0.3s" }}>
+              Register Now <ArrowRightIcon />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ flex: "1 1 100px", padding: "0.9rem", background: "transparent", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Noise texture overlay ─────────────────────────────────────────────────────
 function NoiseOverlay() {
@@ -762,6 +870,7 @@ const FALLBACK_SLIDES = [
     tagColor: "#C9A84C",
     img: "/media/upcoming.png",
     eventId: null,
+    event: null,
     cta: { text: "Register Now", href: REGISTER_URL, external: true },
     accentColor: "#C9A84C",
     overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.75) 0%, rgba(13,13,26,0.3) 60%, rgba(201,168,76,0.1) 100%)",
@@ -813,6 +922,7 @@ function buildUpcomingSlides(events, now) {
       tagColor: "#C9A84C",
       img: ev.cover_image || "",
       eventId: ev.id,
+      event: ev,
       cta: { text: "Register Now", href: REGISTER_URL, external: true },
       accentColor: "#C9A84C",
       overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.75) 0%, rgba(13,13,26,0.3) 60%, rgba(201,168,76,0.1) 100%)",
@@ -835,6 +945,7 @@ function buildPastSlides(events, now) {
       tagColor: "#4ade80",
       img: ev.cover_image || "",
       eventId: ev.id,
+      event: ev,
       cta: { text: "View Gallery", href: "#gallery", external: false },
       accentColor: "#C9A84C",
       overlayColor: "linear-gradient(135deg, rgba(13,13,26,0.78) 0%, rgba(13,13,26,0.35) 60%, rgba(201,168,76,0.08) 100%)",
@@ -864,7 +975,7 @@ async function fetchHeroData() {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-function HeroSlideshow({ onImageClick, onRegisterClick }) {
+function HeroSlideshow({ onImageClick, onRegisterClick, onLearnMoreClick }) {
   const [slides, setSlides] = useState(FALLBACK_SLIDES);
   const [heroReady, setHeroReady] = useState(false); // true once API resolves
   const [current, setCurrent] = useState(0);
@@ -916,6 +1027,29 @@ function HeroSlideshow({ onImageClick, onRegisterClick }) {
   const slide = slides[current] || FALLBACK_SLIDES[0];
   const multipleSlides = slides.length > 1;
 
+  // ── "Registration Open" tag → real hyperlink to the registration form ──
+  const registerHref = slide.eventId ? `/?register=${slide.eventId}` : REGISTER_URL;
+  const handleTagClick = (e) => {
+    if (!slide.eventId) return; // fallback slide: follow the external link normally
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return; // let "open in new tab" work
+    e.preventDefault();
+    onRegisterClick(slide.eventId, slide.title.replace(/\n/g, " "));
+  };
+
+  // ── "Learn More" → event details modal (falls back to scrolling to About) ──
+  const handleLearnMore = (e) => {
+    if (!slide.event) return;
+    e.preventDefault();
+    onLearnMoreClick(slide.event);
+  };
+
+  // Race details shown as bold white chips so they read on any background image
+  const metaChips = [
+    slide.subtitle && { icon: <PinIcon />, text: slide.subtitle },
+    slide.date && { icon: <CalIcon />, text: slide.date },
+    slide.price && { icon: null, text: slide.price },
+  ].filter(Boolean);
+
   const [ref, statsVisible] = useInView(0.1);
   const stats = [
     { value: "2", suffix: "+", label: "Events" },
@@ -961,8 +1095,8 @@ function HeroSlideshow({ onImageClick, onRegisterClick }) {
       {/* Grain overlay */}
       <div style={{ position: "absolute", inset: 0, zIndex: 3, pointerEvents: "none", opacity: 0.04, backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`, backgroundSize: "200px" }} />
 
-      {/* Bottom fade */}
-      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "35%", background: "linear-gradient(to top, #0d0d1a 0%, transparent 100%)", zIndex: 4, pointerEvents: "none" }} />
+      {/* Bottom scrim — darkens the area behind the text so details stay legible on any poster */}
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "75%", background: "linear-gradient(to top, #0d0d1a 0%, rgba(8,8,18,0.85) 30%, rgba(8,8,18,0.5) 60%, transparent 100%)", zIndex: 4, pointerEvents: "none" }} />
 
       {/* Left accent line */}
       <div style={{ position: "absolute", left: "1.5rem", top: "20%", bottom: "20%", width: 1, background: "linear-gradient(to bottom, transparent, rgba(201,168,76,0.5), transparent)", zIndex: 5 }} />
@@ -971,36 +1105,43 @@ function HeroSlideshow({ onImageClick, onRegisterClick }) {
       <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "0 2rem 5rem 3rem", maxWidth: 1320, margin: "0 auto", left: 0, right: 0 }}>
 
         {/* Label + tag */}
-        <div key={`label-${current}`} style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.25rem", animation: loaded ? "slideInLeft 0.7s 0.1s both cubic-bezier(0.16,1,0.3,1)" : "none" }}>
+        <div key={`label-${current}`} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "0.6rem 1rem", marginBottom: "1.25rem", animation: loaded ? "slideInLeft 0.7s 0.1s both cubic-bezier(0.16,1,0.3,1)" : "none" }}>
           <div style={{ width: 32, height: 1, background: slide.accentColor }} />
-          <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.72rem", fontWeight: 700, color: slide.accentColor, letterSpacing: "0.18em", textTransform: "uppercase" }}>{slide.label}</span>
-          <span style={{ padding: "0.2rem 0.75rem", borderRadius: 2, background: slide.tagColor, color: "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.68rem", letterSpacing: "0.1em", textTransform: "uppercase" }}>{slide.tag}</span>
+          <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.72rem", fontWeight: 700, color: "#fff", letterSpacing: "0.18em", textTransform: "uppercase", whiteSpace: "nowrap", textShadow: "0 2px 12px rgba(0,0,0,0.9)" }}>{slide.label}</span>
+
+          {slide.type === "upcoming" ? (
+            <a
+              href={registerHref}
+              target={slide.eventId ? undefined : "_blank"}
+              rel={slide.eventId ? undefined : "noopener noreferrer"}
+              onClick={handleTagClick}
+              className="reg-tag"
+              style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", padding: "0.28rem 0.8rem", borderRadius: 2, background: slide.tagColor, color: "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.68rem", letterSpacing: "0.1em", textTransform: "uppercase", textDecoration: "none", whiteSpace: "nowrap", cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.35)", transition: "all 0.2s" }}
+            >
+              {slide.tag} <ArrowRightIcon />
+            </a>
+          ) : (
+            <span style={{ padding: "0.2rem 0.75rem", borderRadius: 2, background: slide.tagColor, color: "#0d0d1a", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.68rem", letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{slide.tag}</span>
+          )}
         </div>
 
         {/* Title */}
-        <h1 key={`title-${current}`} style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "clamp(3.5rem, 10vw, 7rem)", fontWeight: 700, color: "#fff", lineHeight: 1.0, marginBottom: "1.25rem", letterSpacing: "-0.02em", whiteSpace: "pre-line", animation: loaded ? "fadeUp 0.8s 0.2s both cubic-bezier(0.16,1,0.3,1)" : "none", textShadow: "0 4px 40px rgba(0,0,0,0.5)" }}>
+        <h1 key={`title-${current}`} className="hero-title" style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "clamp(3.5rem, 10vw, 7rem)", fontWeight: 700, color: "#fff", lineHeight: 1.0, marginBottom: "1.25rem", letterSpacing: "-0.02em", whiteSpace: "pre-line", animation: loaded ? "fadeUp 0.8s 0.2s both cubic-bezier(0.16,1,0.3,1)" : "none", textShadow: "0 2px 4px rgba(0,0,0,0.6), 0 6px 40px rgba(0,0,0,0.7)" }}>
           {slide.title}
         </h1>
 
-        {/* Subtitle + date */}
-        <div key={`sub-${current}`} style={{ display: "flex", alignItems: "center", gap: "1.5rem", marginBottom: "2.5rem", animation: loaded ? "fadeUp 0.8s 0.35s both cubic-bezier(0.16,1,0.3,1)" : "none", flexWrap: "wrap" }}>
-          <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.95rem", color: "rgba(255,255,255,0.65)", fontWeight: 300 }}>{slide.subtitle}</span>
-          {slide.date && (
-            <>
-              <span style={{ width: 1, height: 16, background: "rgba(255,255,255,0.2)" }} />
-              <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.8rem", color: slide.accentColor, letterSpacing: "0.08em" }}>{slide.date}</span>
-            </>
-          )}
-          {slide.price && (
-            <>
-              <span style={{ width: 1, height: 16, background: "rgba(255,255,255,0.2)" }} />
-              <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.8rem", color: slide.accentColor, letterSpacing: "0.08em" }}>{slide.price}</span>
-            </>
-          )}
+        {/* Race details — location, date, price */}
+        <div key={`sub-${current}`} style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "2.25rem", animation: loaded ? "fadeUp 0.8s 0.35s both cubic-bezier(0.16,1,0.3,1)" : "none", flexWrap: "wrap" }}>
+          {metaChips.map((m, i) => (
+            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.95rem", borderRadius: 6, background: "rgba(8,8,18,0.65)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "clamp(0.85rem, 2.4vw, 1rem)", letterSpacing: "0.03em", textShadow: "0 1px 8px rgba(0,0,0,0.8)" }}>
+              {m.icon && <span style={{ display: "flex", color: "#fff" }}>{m.icon}</span>}
+              {m.text}
+            </span>
+          ))}
         </div>
 
         {/* CTAs */}
-        <div key={`cta-${current}`} style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "3.5rem", animation: loaded ? "fadeUp 0.8s 0.45s both cubic-bezier(0.16,1,0.3,1)" : "none" }}>
+        <div key={`cta-${current}`} className="hero-cta" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "3.5rem", animation: loaded ? "fadeUp 0.8s 0.45s both cubic-bezier(0.16,1,0.3,1)" : "none" }}>
           {slide.type === "upcoming" && slide.eventId ? (
             <button
               type="button"
@@ -1019,19 +1160,19 @@ function HeroSlideshow({ onImageClick, onRegisterClick }) {
               {slide.cta.text} <ArrowRight />
             </a>
           )}
-          <a href="#about" className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.85)", padding: "0.85rem 2rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: "0.82rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", border: "1px solid rgba(255,255,255,0.15)", transition: "all 0.3s", backdropFilter: "blur(8px)" }}>
+          <a href="#about" onClick={handleLearnMore} className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "rgba(8,8,18,0.55)", color: "#fff", padding: "0.85rem 2rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", textDecoration: "none", letterSpacing: "0.08em", textTransform: "uppercase", border: "1px solid rgba(255,255,255,0.4)", transition: "all 0.3s", backdropFilter: "blur(8px)", cursor: "pointer" }}>
             Learn More
           </a>
         </div>
 
         {/* Stats */}
-        <div ref={ref} style={{ display: "flex", gap: "2.5rem", paddingTop: "1.5rem", borderTop: "1px solid rgba(255,255,255,0.08)", flexWrap: "wrap" }} className="stats-row">
+        <div ref={ref} style={{ display: "flex", gap: "2.5rem", paddingTop: "1.5rem", borderTop: "1px solid rgba(255,255,255,0.15)", flexWrap: "wrap" }} className="stats-row">
           {stats.map((s, i) => (
             <div key={i} style={{ animation: statsVisible ? `counterUp 0.7s ${0.1 + i * 0.15}s both` : "none" }}>
-              <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "2.2rem", fontWeight: 700, color: "#C9A84C", lineHeight: 1 }}>
+              <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "2.2rem", fontWeight: 700, color: "#C9A84C", lineHeight: 1, textShadow: "0 2px 12px rgba(0,0,0,0.7)" }}>
                 {counters[i]}{s.suffix}
               </div>
-              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.4)", marginTop: 4, letterSpacing: "0.1em", textTransform: "uppercase" }}>{s.label}</div>
+              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", fontWeight: 600, color: "rgba(255,255,255,0.85)", marginTop: 4, letterSpacing: "0.1em", textTransform: "uppercase", textShadow: "0 1px 8px rgba(0,0,0,0.8)" }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -2285,16 +2426,52 @@ function Footer() {
 export default function HomePage() {
   const [imageModal, setImageModal] = useState(null);
   const [certModal, setCertModal] = useState(null);
+  const [detailsModal, setDetailsModal] = useState(null); // event object for the "Learn More" modal
   const [regModal, setRegModal] = useState(null); // { eventId, eventTitle }
 
-  const openRegisterModal = (eventId, eventTitle) => setRegModal({ eventId, eventTitle });
+  // Open the registration form (also puts a shareable ?register=<id> link in the address bar)
+  const openRegisterModal = (eventId, eventTitle) => {
+    setDetailsModal(null);
+    setRegModal({ eventId, eventTitle });
+    setRegisterUrl(eventId);
+  };
+
+  const closeRegisterModal = useCallback(() => {
+    setRegModal(null);
+    setRegisterUrl(null);
+  }, []);
+
+  // Deep link: visiting  /?register=<EVENT_ID>  opens that event's registration form
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("register");
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      let title = "";
+      try {
+        const events = await fetchEvents();
+        const ev = events.find(e => String(e.id) === id);
+        if (!ev) return;                                              // unknown event id → do nothing
+        if (ev.event_date && new Date(ev.event_date) < new Date()) return; // event already happened
+        title = ev.title;
+      } catch {
+        // events failed to load — still open the form, just without the title
+      }
+      if (!cancelled) setRegModal({ eventId: id, eventTitle: title });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <>
       <style>{GLOBAL_CSS}</style>
       <NoiseOverlay />
       <Navbar />
-      <HeroSlideshow onImageClick={(src, alt) => setImageModal({ src, alt })} onRegisterClick={openRegisterModal} />
+      <HeroSlideshow
+        onImageClick={(src, alt) => setImageModal({ src, alt })}
+        onRegisterClick={openRegisterModal}
+        onLearnMoreClick={(event) => setDetailsModal(event)}
+      />
       <TickerBanner />
       <About />
       <WhatWeOrganize />
@@ -2303,9 +2480,10 @@ export default function HomePage() {
       <Results />
       <Contact />
       <Footer />
+      {detailsModal && <EventDetailsModal event={detailsModal} onClose={() => setDetailsModal(null)} onRegister={openRegisterModal} onImageClick={(src, alt) => setImageModal({ src, alt })} />}
       {imageModal && <ImageModal src={imageModal.src} alt={imageModal.alt} onClose={() => setImageModal(null)} />}
       {certModal && <CertificateModal cert={certModal} onClose={() => setCertModal(null)} />}
-      {regModal && <RegistrationModal eventId={regModal.eventId} eventTitle={regModal.eventTitle} onClose={() => setRegModal(null)} />}
+      {regModal && <RegistrationModal eventId={regModal.eventId} eventTitle={regModal.eventTitle} onClose={closeRegisterModal} />}
     </>
   );
 }
