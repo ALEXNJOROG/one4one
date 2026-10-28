@@ -5,6 +5,11 @@ import { loadAuth } from "../lib/auth";
 // ── Shared config ─────────────────────────────────────────────────────────────
 const BASE_URL = "https://backone.one4one.co";
 const REGISTER_URL = "https://forms.gle/89SRrpkirDEChGZy7"; // Fallback link, used only when an event has no id
+// ── Manual payment details (shown if the M-Pesa prompt fails) ─────────────────
+const PAYBILL_NO = "4326547";
+const PAYBILL_NAME = "One4One Wellness";
+const SUPPORT_NUMBER = "+254722943271";
+const SUPPORT_WHATSAPP = "254722943271"; // digits only, for the wa.me link
 
 // ── Registration deep-link helper ─────────────────────────────────────────────
 // Registration link format:  https://one4one.co/?register=<EVENT_ID>
@@ -334,7 +339,7 @@ const HOW_HEARD_OPTIONS = [
   "Running Coach",
 ];
 
-function RegistrationModal({ eventId, eventTitle, onClose }) {
+function RegistrationModal({ eventId, eventTitle, eventPrice, onClose }) {
   const [form, setForm] = useState({
     full_name: "",
     email: "",
@@ -348,6 +353,22 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
   const [status, setStatus] = useState("idle"); // idle | submitting | success | error
   const [errorMsg, setErrorMsg] = useState("");
   const [termsOpen, setTermsOpen] = useState(false);
+  const [payOpen, setPayOpen] = useState(true);
+const [copied, setCopied] = useState("");
+
+const unitPrice = Number(eventPrice);
+const totalAmount = !isNaN(unitPrice) && unitPrice > 0
+  ? unitPrice * (Number(form.tickets_bought) || 1)
+  : null;
+const accountName = form.full_name.trim() || "Your full name";
+
+const copyText = async (key, text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(""), 1500);
+  } catch { /* ignore */ }
+};
 
   useEffect(() => {
     const handleKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -612,6 +633,79 @@ function RegistrationModal({ eventId, eventTitle, onClose }) {
               </span>
             </button>
 
+            {/* How payment works */}
+<div style={{ marginBottom: "1rem", padding: "1rem 1.1rem", borderRadius: 10, background: "rgba(201,168,76,0.07)", border: "1px solid rgba(201,168,76,0.3)", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+  <span style={{ width: 18, height: 18, flexShrink: 0, marginTop: 2, borderRadius: "50%", border: "1.5px solid #C9A84C", color: "#C9A84C", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>i</span>
+  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", lineHeight: 1.65, color: "rgba(255,255,255,0.75)" }}>
+    <strong style={{ color: "#fff" }}>How payment works.</strong> After you submit, an M-Pesa prompt will pop up on <span style={{ color: "#C9A84C" }}>your phone</span>. If it doesn't appear or times out, you can pay manually using the details below. Your slot is confirmed automatically.
+  </p>
+</div>
+
+{/* Payment details (if prompt fails) */}
+<div style={{ marginBottom: "1.25rem", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, overflow: "hidden" }}>
+  <button
+    type="button"
+    onClick={() => setPayOpen(o => !o)}
+    style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.85rem 1.1rem", background: "rgba(255,255,255,0.03)", border: "none", cursor: "pointer" }}
+  >
+    <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", color: "rgba(255,255,255,0.7)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+      Payment Details (If Prompt Fails)
+    </span>
+    <span style={{ color: "#C9A84C", display: "inline-block", transform: payOpen ? "none" : "rotate(180deg)", transition: "transform 0.25s" }}>▴</span>
+  </button>
+
+  {payOpen && (
+    <div style={{ padding: "1rem 1.1rem 1.1rem", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", lineHeight: 1.6, color: "rgba(255,255,255,0.65)", marginBottom: "1rem" }}>
+        Didn't get the M-Pesa prompt, or it timed out? Pay manually and your slot is confirmed automatically.
+      </p>
+
+      {/* Steps */}
+      {[
+        <>Open M-Pesa → Lipa na M-Pesa → <strong style={{ color: "#fff" }}>Paybill</strong></>,
+        "Enter the details below",
+        "Enter your PIN and send",
+      ].map((s, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.65rem" }}>
+          <span style={{ width: 22, height: 22, flexShrink: 0, borderRadius: "50%", background: "rgba(201,168,76,0.12)", border: "1px solid rgba(201,168,76,0.4)", color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.68rem", display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
+          <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.82rem", color: "rgba(255,255,255,0.8)" }}>{s}</span>
+        </div>
+      ))}
+
+      {/* Details box */}
+      <div style={{ marginTop: "1rem", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, background: "rgba(0,0,0,0.25)" }}>
+        {[
+          { key: "paybill", label: "Business No. (Paybill)", value: PAYBILL_NO, copy: PAYBILL_NO },
+          { key: "account", label: "Account No.", value: accountName, copy: form.full_name.trim() },
+          { key: "name", label: "Name", value: PAYBILL_NAME },
+          // { key: "amount", label: "Amount", value: totalAmount ? `KES ${totalAmount.toLocaleString()}` : "See event price" },
+        ].map((row, i, arr) => (
+          <div key={row.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", padding: "0.8rem 1rem", borderBottom: i < arr.length - 1 ? "1px solid rgba(255,255,255,0.07)" : "none" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)", marginBottom: 3 }}>{row.label}</div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "1.1rem", color: "#fff", wordBreak: "break-word" }}>{row.value}</div>
+            </div>
+            {row.copy && (
+              <button
+                type="button"
+                onClick={() => copyText(row.key, row.copy)}
+                style={{ flexShrink: 0, padding: "0.5rem 0.95rem", borderRadius: 6, background: "transparent", border: "1px solid rgba(201,168,76,0.6)", color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.68rem", letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer" }}
+              >
+                {copied === row.key ? "Copied" : "Copy"}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <p style={{ marginTop: "1rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.76rem", lineHeight: 1.6, color: "rgba(255,255,255,0.5)" }}>
+        Use your full name as the account so we can match your payment. You'll get a confirmation SMS within a few minutes. Still stuck? WhatsApp{" "}
+        <a href={`https://wa.me/${SUPPORT_WHATSAPP}`} target="_blank" rel="noopener noreferrer" style={{ color: "#C9A84C", textDecoration: "none" }}>{SUPPORT_NUMBER}</a>.
+      </p>
+    </div>
+  )}
+</div>
+
             {status === "error" && errorMsg && (
               <div style={{ marginBottom: "1.1rem", padding: "0.75rem 1rem", borderRadius: 8, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", color: "#fca5a5", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem" }}>
                 {errorMsg}
@@ -726,7 +820,7 @@ function EventDetailsModal({ event, onClose, onRegister, onImageClick }) {
           {upcoming && (
             <button
               type="button"
-              onClick={() => onRegister(event.id, event.title)}
+              onClick={() => onRegister(event.id, event.title, event.price)}
               className="btn-primary"
               style={{ flex: "2 1 180px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 24px rgba(201,168,76,0.35)", transition: "all 0.3s" }}>
               Register Now <ArrowRightIcon />
@@ -1452,7 +1546,7 @@ function UpcomingCard({ event, index, visible, onImageClick, onRegisterClick }) 
 
         <button
           type="button"
-          onClick={() => onRegisterClick(event.id, event.title)}
+          onClick={() => onRegisterClick(event.id, event.title, event.price)}
           style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", padding: "0.85rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 20px rgba(201,168,76,0.3)", transition: "all 0.3s" }}
           onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 8px 32px rgba(201,168,76,0.45)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
           onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 4px 20px rgba(201,168,76,0.3)"; e.currentTarget.style.transform = "none"; }}>
@@ -2430,11 +2524,11 @@ export default function HomePage() {
   const [regModal, setRegModal] = useState(null); // { eventId, eventTitle }
 
   // Open the registration form (also puts a shareable ?register=<id> link in the address bar)
-  const openRegisterModal = (eventId, eventTitle) => {
-    setDetailsModal(null);
-    setRegModal({ eventId, eventTitle });
-    setRegisterUrl(eventId);
-  };
+  const openRegisterModal = (eventId, eventTitle, eventPrice) => {
+  setDetailsModal(null);
+  setRegModal({ eventId, eventTitle, eventPrice });
+  setRegisterUrl(eventId);
+};
 
   const closeRegisterModal = useCallback(() => {
     setRegModal(null);
@@ -2448,16 +2542,16 @@ export default function HomePage() {
     let cancelled = false;
     (async () => {
       let title = "";
-      try {
-        const events = await fetchEvents();
-        const ev = events.find(e => String(e.id) === id);
-        if (!ev) return;                                              // unknown event id → do nothing
-        if (ev.event_date && new Date(ev.event_date) < new Date()) return; // event already happened
-        title = ev.title;
-      } catch {
-        // events failed to load — still open the form, just without the title
-      }
-      if (!cancelled) setRegModal({ eventId: id, eventTitle: title });
+let price;
+try {
+  const events = await fetchEvents();
+  const ev = events.find(e => String(e.id) === id);
+  if (!ev) return;
+  if (ev.event_date && new Date(ev.event_date) < new Date()) return;
+  title = ev.title;
+  price = ev.price;
+} catch { }
+if (!cancelled) setRegModal({ eventId: id, eventTitle: title, eventPrice: price });
     })();
     return () => { cancelled = true; };
   }, []);
@@ -2483,7 +2577,7 @@ export default function HomePage() {
       {detailsModal && <EventDetailsModal event={detailsModal} onClose={() => setDetailsModal(null)} onRegister={openRegisterModal} onImageClick={(src, alt) => setImageModal({ src, alt })} />}
       {imageModal && <ImageModal src={imageModal.src} alt={imageModal.alt} onClose={() => setImageModal(null)} />}
       {certModal && <CertificateModal cert={certModal} onClose={() => setCertModal(null)} />}
-      {regModal && <RegistrationModal eventId={regModal.eventId} eventTitle={regModal.eventTitle} onClose={closeRegisterModal} />}
+      {regModal && <RegistrationModal eventId={regModal.eventId} eventTitle={regModal.eventTitle} eventPrice={regModal.eventPrice} onClose={closeRegisterModal} />}
     </>
   );
 }
