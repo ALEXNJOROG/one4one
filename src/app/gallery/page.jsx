@@ -553,7 +553,8 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
     // Usually only known/added once the event has actually taken place.
     results_url: event?.results_url || "",
     // Ticketing
-    price: event?.price !== undefined && event?.price !== null ? String(event.price) : "",
+        price_with_medal: String(event?.price_with_medal ?? event?.price ?? ""),
+    price_without_medal: String(event?.price_without_medal ?? ""),
     max_tickets: event?.max_tickets !== undefined && event?.max_tickets !== null ? String(event.max_tickets) : "",
   });
   const [saving, setSaving] = useState(false);
@@ -573,8 +574,12 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
       showToast("Results URL must start with http:// or https://", "error");
       return;
     }
-    if (form.price.trim() && (isNaN(Number(form.price)) || Number(form.price) < 0)) {
-      showToast("Price must be a valid non-negative number", "error");
+        if (form.price_with_medal.trim() && (isNaN(Number(form.price_with_medal)) || Number(form.price_with_medal) < 0)) {
+      showToast("Price with Medal must be a valid non-negative number", "error");
+      return;
+    }
+        if (form.price_without_medal.trim() && (isNaN(Number(form.price_without_medal)) || Number(form.price_without_medal) < 0)) {
+      showToast("Price without Medal must be a valid non-negative number", "error");
       return;
     }
     if (form.max_tickets.trim() && (isNaN(Number(form.max_tickets)) || Number(form.max_tickets) < 0 || !Number.isInteger(Number(form.max_tickets)))) {
@@ -583,9 +588,10 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
     }
     setSaving(true);
     try {
-      const payload = {
+            const payload = {
         ...form,
-        price: form.price.trim() ? Number(form.price) : 0,
+        price_with_medal: form.price_with_medal.trim() ? Number(form.price_with_medal) : 0,
+        price_without_medal: form.price_without_medal.trim() ? Number(form.price_without_medal) : 0,
         max_tickets: form.max_tickets.trim() ? Number(form.max_tickets) : 0,
       };
       let result;
@@ -646,18 +652,31 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
         </div>
 
         {/* ── Ticketing: Price & Max Tickets ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
-          <FormField label="Price (KES)">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+                    <FormField label="Price with Medal (KES)">
             <input
               type="number"
               min="0"
               step="1"
-              value={form.price}
-              onChange={set("price")}
-              onFocus={() => setFieldFocus("price")}
+              value={form.price_with_medal}
+              onChange={set("price_with_medal")}
+              onFocus={() => setFieldFocus("price_with_medal")}
               onBlur={() => setFieldFocus(null)}
               placeholder="e.g. 1500"
-              style={dynBorder("price")}
+              style={dynBorder("price_with_medal")}
+            />
+          </FormField>
+          <FormField label="Price without Medal (KES)">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={form.price_without_medal}
+              onChange={set("price_without_medal")}
+              onFocus={() => setFieldFocus("price_without_medal")}
+              onBlur={() => setFieldFocus(null)}
+              placeholder="e.g. 1200"
+              style={dynBorder("price_without_medal")}
             />
           </FormField>
           <FormField label="Max Tickets">
@@ -675,7 +694,7 @@ function EventFormModal({ event, onClose, onSaved, showToast, token }) {
           </FormField>
         </div>
         <p style={{ marginTop: "-0.5rem", marginBottom: "1rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", lineHeight: 1.5 }}>
-          Price is shown publicly on the homepage. Max Tickets is used for capacity only and is never shown to visitors.
+                    Prices are shown publicly on the homepage. Max Tickets is used for capacity only and is never shown to visitors.
         </p>
 
         <FormField label="Cover Image URL">
@@ -1341,6 +1360,7 @@ function Navbar({ onUploadClick, onEventsClick, isAuthenticated, user, onLogout,
     { label: "Events", href: "/#events" },
     { label: "Gallery", href: "/gallery" },
     { label: "Results", href: "/results" },
+    { label: "Blogs", href: "/blogs" },
   ];
   const links = isAuthenticated ? [...baseLinks, { label: "Registrations", href: "/registrations" }] : baseLinks;
 

@@ -328,8 +328,23 @@ function CertificateModal({ cert, onClose }) {
   );
 }
 
+// ============================================================================
+// HOW TO APPLY (src/app/homepage/page.jsx)
+// 1. Find the line:   // ── Registration Modal ───...
+// 2. Select everything from that line down to (but NOT including) the line:
+//                     // ── Event Details Modal (opened by the hero "Learn More" button) ───...
+// 3. Delete it and paste ALL of this file's code (below this box) in its place.
+// Nothing else in the file needs to change.
+// ============================================================================
+
 // ── Registration Modal ────────────────────────────────────────────────────────
-const RACE_OPTIONS = ["42kms", "21kms", "10km"];
+const RACE_OPTIONS = ["Full Marathon", "Half Marathon", "10km"];
+const GENDER_OPTIONS = ["Male", "Female"];
+const MEDAL_OPTIONS = [
+  { value: "with_medal", label: "With medal" },
+  { value: "without_medal", label: "Without medal" },
+];
+const TSHIRT_SIZES = ["X Small", "Small", "Medium", "Large", "X Large", "XX Large"];
 const HOW_HEARD_OPTIONS = [
   "Referral from a friend",
   "Facebook",
@@ -339,13 +354,54 @@ const HOW_HEARD_OPTIONS = [
   "Running Coach",
 ];
 
+// Row of single-choice buttons (used for race, gender, medal, t-shirt, recovery games)
+// options can be plain strings, or { value, label } when the sent value differs from the text shown
+function ChoiceRow({ options, value, onSelect, disabled, minWidth = 100 }) {
+  return (
+    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+      {options.map(o => {
+        const val = typeof o === "string" ? o : o.value;
+        const label = typeof o === "string" ? o : o.label;
+        const checked = value === val;
+        return (
+          <button
+            key={val}
+            type="button"
+            onClick={() => onSelect(val)}
+            disabled={disabled}
+            style={{
+              flex: `1 1 ${minWidth}px`, padding: "0.7rem 0.5rem", borderRadius: 8,
+              border: `1.5px solid ${checked ? "#C9A84C" : "rgba(255,255,255,0.12)"}`,
+              background: checked ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.03)",
+              color: checked ? "#e8c96a" : "rgba(255,255,255,0.65)",
+              fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.76rem",
+              cursor: disabled ? "not-allowed" : "pointer", transition: "all 0.2s",
+            }}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function RegistrationModal({ eventId, eventTitle, eventPrice, onClose }) {
   const [form, setForm] = useState({
     full_name: "",
     email: "",
     phone_number: "",
     tickets_bought: 1,
+    gender: "",
+    emergency_contact_name: "",
+    emergency_contact_number: "",
+    pre_existing_conditions: "",
     race_distance: "",
+    est_h: "",
+    est_m: "",
+    est_s: "",
+    medal: "",
+    t_shirt_size: "",
     recovery_games: "",
     how_heard: "",
     agree_terms: false,
@@ -354,21 +410,25 @@ function RegistrationModal({ eventId, eventTitle, eventPrice, onClose }) {
   const [errorMsg, setErrorMsg] = useState("");
   const [termsOpen, setTermsOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(true);
-const [copied, setCopied] = useState("");
+  const [copied, setCopied] = useState("");
 
-const unitPrice = Number(eventPrice);
-const totalAmount = !isNaN(unitPrice) && unitPrice > 0
-  ? unitPrice * (Number(form.tickets_bought) || 1)
-  : null;
-const accountName = form.full_name.trim() || "Your full name";
+    const unitPrice = priceFor(eventPrice, form.medal);
+  const totalAmount = unitPrice > 0 ? unitPrice * (Number(form.tickets_bought) || 1) : null;
 
-const copyText = async (key, text) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    setCopied(key);
-    setTimeout(() => setCopied(""), 1500);
-  } catch { /* ignore */ }
-};
+  // Medal buttons show their price, e.g. "Without medal (KES 1,200)"
+  const medalOptions = MEDAL_OPTIONS.map(o => {
+    const p = priceFor(eventPrice, o.value);
+    return { ...o, label: p > 0 ? `${o.label} (KES ${p.toLocaleString()})` : o.label };
+  });
+  const accountName = form.full_name.trim() || "Your full name";
+
+  const copyText = async (key, text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied(""), 1500);
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     const handleKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -396,19 +456,36 @@ const copyText = async (key, text) => {
     }
   };
 
-  const selectRace = (val) => setForm(f => ({ ...f, race_distance: val }));
-  const selectRecovery = (val) => setForm(f => ({ ...f, recovery_games: val }));
+  const selectField = (key) => (val) => setForm(f => ({ ...f, [key]: val }));
   const selectHeard = (val) => setForm(f => ({ ...f, how_heard: val }));
   const toggleAgree = () => setForm(f => ({ ...f, agree_terms: !f.agree_terms }));
 
-  // Every field below is mandatory, including the race, recovery-games
-  // answer, at least one "how did you hear" option, and the terms checkbox.
+  // Estimated finish time: three small boxes (hours / minutes / seconds) sent as "HH:MM:SS"
+  const setTimePart = (key, max) => (e) => {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 2);
+    const val = digits === "" ? "" : String(Math.min(Number(digits), max));
+    setForm(f => ({ ...f, [key]: val }));
+  };
+  const pad2 = (v) => String(v === "" ? 0 : Number(v)).padStart(2, "0");
+  const estimatedTime = `${pad2(form.est_h)}:${pad2(form.est_m)}:${pad2(form.est_s)}`;
+  const hasEstimatedTime = estimatedTime !== "00:00:00";
+
+  // Every field below is mandatory, including race, estimated time, medal, t-shirt size,
+  // emergency contact, pre-existing conditions, recovery-games answer, at least one
+  // "how did you hear" option, and the terms checkbox.
   const isValid =
     form.full_name.trim() &&
     form.email.trim() &&
     form.phone_number.trim() &&
     form.tickets_bought &&
+    form.gender &&
+    form.emergency_contact_name.trim() &&
+    form.emergency_contact_number.trim() &&
+    form.pre_existing_conditions.trim() &&
     form.race_distance &&
+    hasEstimatedTime &&
+    form.medal &&
+    form.t_shirt_size &&
     form.recovery_games &&
     form.how_heard &&
     form.agree_terms;
@@ -417,7 +494,7 @@ const copyText = async (key, text) => {
     e.preventDefault();
     if (!isValid) {
       setStatus("error");
-      setErrorMsg("Please complete every field — including your race, how you heard about us, and the terms agreement — before submitting.");
+      setErrorMsg("Please complete every field, including your emergency contact, race details and the terms agreement, before submitting.");
       return;
     }
     setStatus("submitting");
@@ -430,10 +507,17 @@ const copyText = async (key, text) => {
           full_name: form.full_name.trim(),
           email: form.email.trim(),
           phone_number: form.phone_number.trim(),
-          tickets_bought: Number(form.tickets_bought) || 1,
-          race: parseInt(form.race_distance, 10),
+          gender: form.gender,
+          emergency_contact_name: form.emergency_contact_name.trim(),
+          emergency_contact_number: form.emergency_contact_number.trim(),
+          pre_existing_conditions: form.pre_existing_conditions.trim(),
+          race: form.race_distance, // now text: "Full Marathon" | "Half Marathon" | "10km"
+          estimated_time: estimatedTime, // "HH:MM:SS"
+          medal: form.medal, // "with_medal" | "without_medal"
+          t_shirt_size: form.t_shirt_size,
           recovery_games: form.recovery_games,
           how_did_you_hear: form.how_heard,
+          tickets_bought: Number(form.tickets_bought) || 1,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -448,6 +532,31 @@ const copyText = async (key, text) => {
   };
 
   const labelStyle = { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "0.5rem", letterSpacing: "0.1em", textTransform: "uppercase" };
+  const hintStyle = { marginTop: "0.4rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem", color: "rgba(255,255,255,0.35)", lineHeight: 1.5 };
+  const inputBase = { width: "100%", padding: "0.82rem 1rem", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.88rem", outline: "none", transition: "border-color 0.2s", background: "rgba(255,255,255,0.04)", color: "#fff", boxSizing: "border-box" };
+  const focusProps = {
+    onFocus: e => e.target.style.borderColor = "rgba(201,168,76,0.5)",
+    onBlur: e => e.target.style.borderColor = "rgba(255,255,255,0.1)",
+  };
+  const submitting = status === "submitting";
+
+  // Standard text-style field
+  const renderInput = (f) => (
+    <div key={f.name} style={{ marginBottom: "1.1rem" }}>
+      <label style={labelStyle}>{f.label}</label>
+      <input
+        type={f.type}
+        name={f.name}
+        min={f.min}
+        value={form[f.name]}
+        onChange={handleChange}
+        placeholder={f.placeholder}
+        disabled={submitting}
+        style={inputBase}
+        {...focusProps}
+      />
+    </div>
+  );
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, opacity: closing ? 0 : 1, transition: "opacity 0.7s ease", zIndex: 2000, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.25rem", animation: "fadeIn 0.2s ease" }}>
@@ -481,83 +590,99 @@ const copyText = async (key, text) => {
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ padding: "1.75rem", overflowY: "auto" }}>
+
+            {/* Existing basics */}
             {[
               { label: "Full Name", name: "full_name", placeholder: "John Doe", type: "text" },
               { label: "Email", name: "email", placeholder: "john@example.com", type: "email" },
               { label: "Phone Number", name: "phone_number", placeholder: "254712345678", type: "tel" },
               { label: "Tickets", name: "tickets_bought", placeholder: "1", type: "number", min: 1 },
-            ].map(f => (
-              <div key={f.name} style={{ marginBottom: "1.1rem" }}>
-                <label style={labelStyle}>{f.label}</label>
-                <input
-                  type={f.type}
-                  name={f.name}
-                  min={f.min}
-                  value={form[f.name]}
-                  onChange={handleChange}
-                  placeholder={f.placeholder}
-                  disabled={status === "submitting"}
-                  style={{ width: "100%", padding: "0.82rem 1rem", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", fontFamily: "'DM Sans', sans-serif", fontSize: "0.88rem", outline: "none", transition: "border-color 0.2s", background: "rgba(255,255,255,0.04)", color: "#fff", boxSizing: "border-box" }}
-                  onFocus={e => e.target.style.borderColor = "rgba(201,168,76,0.5)"}
-                  onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.1)"}
-                />
-              </div>
-            ))}
+            ].map(renderInput)}
+
+            {/* NEW: Gender */}
+            <div style={{ marginBottom: "1.1rem" }}>
+              <label style={labelStyle}>Gender</label>
+              <ChoiceRow options={GENDER_OPTIONS} value={form.gender} onSelect={selectField("gender")} disabled={submitting} />
+            </div>
+
+            {/* NEW: Emergency contact */}
+            {[
+              { label: "Emergency Contact Name", name: "emergency_contact_name", placeholder: "Jane Doe", type: "text" },
+              { label: "Emergency Contact Number", name: "emergency_contact_number", placeholder: "0712345678", type: "tel" },
+            ].map(renderInput)}
+
+            {/* NEW: Pre-existing conditions */}
+            <div style={{ marginBottom: "1.1rem" }}>
+              <label style={labelStyle}>Pre-existing Medical Conditions</label>
+              <textarea
+                name="pre_existing_conditions"
+                value={form.pre_existing_conditions}
+                onChange={handleChange}
+                placeholder="e.g. Asthma, uses an inhaler"
+                rows={3}
+                disabled={submitting}
+                style={{ ...inputBase, resize: "vertical", minHeight: 76, lineHeight: 1.5 }}
+                {...focusProps}
+              />
+              <p style={hintStyle}>Type "None" if you have no conditions we should know about.</p>
+            </div>
 
             {/* Your Race (single choice) */}
             <div style={{ marginBottom: "1.1rem" }}>
               <label style={labelStyle}>Your Race</label>
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                {RACE_OPTIONS.map(opt => {
-                  const checked = form.race_distance === opt;
-                  return (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => selectRace(opt)}
-                      disabled={status === "submitting"}
-                      style={{
-                        flex: "1 1 100px", padding: "0.7rem 0.5rem", borderRadius: 8,
-                        border: `1.5px solid ${checked ? "#C9A84C" : "rgba(255,255,255,0.12)"}`,
-                        background: checked ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.03)",
-                        color: checked ? "#e8c96a" : "rgba(255,255,255,0.65)",
-                        fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem",
-                        cursor: status === "submitting" ? "not-allowed" : "pointer", transition: "all 0.2s",
-                      }}
-                    >
-                      {opt}
-                    </button>
-                  );
-                })}
+              <ChoiceRow options={RACE_OPTIONS} value={form.race_distance} onSelect={selectField("race_distance")} disabled={submitting} minWidth={115} />
+            </div>
+
+            {/* NEW: Estimated finish time */}
+            <div style={{ marginBottom: "1.1rem" }}>
+              <label style={labelStyle}>Estimated Finish Time</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                {[
+                  { key: "est_h", ph: "HH", max: 23, aria: "Hours" },
+                  { key: "est_m", ph: "MM", max: 59, aria: "Minutes" },
+                  { key: "est_s", ph: "SS", max: 59, aria: "Seconds" },
+                ].map((p, i) => (
+                  <div key={p.key} style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1 }}>
+                    {i > 0 && <span style={{ color: "rgba(255,255,255,0.4)", fontFamily: "'Syne', sans-serif", fontWeight: 700 }}>:</span>}
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      aria-label={p.aria}
+                      value={form[p.key]}
+                      onChange={setTimePart(p.key, p.max)}
+                      placeholder={p.ph}
+                      disabled={submitting}
+                      style={{ ...inputBase, textAlign: "center", padding: "0.82rem 0.4rem" }}
+                      {...focusProps}
+                    />
+                  </div>
+                ))}
               </div>
+              <p style={hintStyle}>Hours : minutes : seconds. Example: 02:15:00</p>
+            </div>
+
+            {/* NEW: Medal */}
+            <div style={{ marginBottom: "1.1rem" }}>
+              <label style={labelStyle}>Medal</label>
+              <ChoiceRow options={medalOptions} value={form.medal} onSelect={selectField("medal")} disabled={submitting} minWidth={170} />
+            </div>
+
+            {/* NEW: T-shirt size */}
+            <div style={{ marginBottom: "1.1rem" }}>
+              <label style={labelStyle}>T-Shirt Size</label>
+              <ChoiceRow options={TSHIRT_SIZES} value={form.t_shirt_size} onSelect={selectField("t_shirt_size")} disabled={submitting} minWidth={70} />
             </div>
 
             {/* Recovery Games (yes/no) */}
             <div style={{ marginBottom: "1.1rem" }}>
               <label style={labelStyle}>Will you participate in Recovery Games?</label>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                {["yes", "no"].map(opt => {
-                  const checked = form.recovery_games === opt;
-                  return (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => selectRecovery(opt)}
-                      disabled={status === "submitting"}
-                      style={{
-                        flex: 1, padding: "0.7rem 0.5rem", borderRadius: 8, textTransform: "capitalize",
-                        border: `1.5px solid ${checked ? "#C9A84C" : "rgba(255,255,255,0.12)"}`,
-                        background: checked ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.03)",
-                        color: checked ? "#e8c96a" : "rgba(255,255,255,0.65)",
-                        fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem",
-                        cursor: status === "submitting" ? "not-allowed" : "pointer", transition: "all 0.2s",
-                      }}
-                    >
-                      {opt}
-                    </button>
-                  );
-                })}
-              </div>
+              <ChoiceRow
+                options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]}
+                value={form.recovery_games}
+                onSelect={selectField("recovery_games")}
+                disabled={submitting}
+                minWidth={80}
+              />
             </div>
 
             {/* How did you learn about us */}
@@ -571,12 +696,12 @@ const copyText = async (key, text) => {
                       key={opt}
                       type="button"
                       onClick={() => selectHeard(opt)}
-                      disabled={status === "submitting"}
+                      disabled={submitting}
                       style={{
                         display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 0.7rem", borderRadius: 8,
                         border: `1.5px solid ${checked ? "#C9A84C" : "rgba(255,255,255,0.1)"}`,
                         background: checked ? "rgba(201,168,76,0.1)" : "rgba(255,255,255,0.03)",
-                        cursor: status === "submitting" ? "not-allowed" : "pointer", transition: "all 0.2s", textAlign: "left",
+                        cursor: submitting ? "not-allowed" : "pointer", transition: "all 0.2s", textAlign: "left",
                       }}
                     >
                       <span style={{ width: 15, height: 15, borderRadius: 4, flexShrink: 0, border: `1.5px solid ${checked ? "#C9A84C" : "rgba(255,255,255,0.25)"}`, background: checked ? "#C9A84C" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -622,8 +747,8 @@ const copyText = async (key, text) => {
             <button
               type="button"
               onClick={toggleAgree}
-              disabled={status === "submitting"}
-              style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem", width: "100%", background: "none", border: "none", padding: 0, cursor: status === "submitting" ? "not-allowed" : "pointer", textAlign: "left", marginBottom: "1.25rem" }}
+              disabled={submitting}
+              style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem", width: "100%", background: "none", border: "none", padding: 0, cursor: submitting ? "not-allowed" : "pointer", textAlign: "left", marginBottom: "1.25rem" }}
             >
               <span style={{ width: 17, height: 17, marginTop: 1, borderRadius: 4, flexShrink: 0, border: `1.5px solid ${form.agree_terms ? "#C9A84C" : "rgba(255,255,255,0.3)"}`, background: form.agree_terms ? "#C9A84C" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {form.agree_terms && <span style={{ color: "#0d0d1a", fontSize: "0.68rem", fontWeight: 900, lineHeight: 1 }}>✓</span>}
@@ -633,78 +758,90 @@ const copyText = async (key, text) => {
               </span>
             </button>
 
+                        {/* Amount to pay (follows the medal choice and ticket count) */}
+            {form.medal && totalAmount && (
+              <div style={{ marginBottom: "1rem", padding: "0.85rem 1.1rem", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+                <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", color: "rgba(255,255,255,0.6)" }}>
+                  Amount to pay ({Number(form.tickets_bought) || 1} × KES {unitPrice.toLocaleString()})
+                </span>
+                <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "1.05rem", color: "#C9A84C", whiteSpace: "nowrap" }}>
+                  KES {totalAmount.toLocaleString()}
+                </span>
+              </div>
+            )}
+
             {/* How payment works */}
-<div style={{ marginBottom: "1rem", padding: "1rem 1.1rem", borderRadius: 10, background: "rgba(201,168,76,0.07)", border: "1px solid rgba(201,168,76,0.3)", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-  <span style={{ width: 18, height: 18, flexShrink: 0, marginTop: 2, borderRadius: "50%", border: "1.5px solid #C9A84C", color: "#C9A84C", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>i</span>
-  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", lineHeight: 1.65, color: "rgba(255,255,255,0.75)" }}>
-    <strong style={{ color: "#fff" }}>How payment works.</strong> After you submit, an M-Pesa prompt will pop up on <span style={{ color: "#C9A84C" }}>your phone</span>. If it doesn't appear or times out, you can pay manually using the details below. Your slot is confirmed automatically.
-  </p>
-</div>
-
-{/* Payment details (if prompt fails) */}
-<div style={{ marginBottom: "1.25rem", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, overflow: "hidden" }}>
-  <button
-    type="button"
-    onClick={() => setPayOpen(o => !o)}
-    style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.85rem 1.1rem", background: "rgba(255,255,255,0.03)", border: "none", cursor: "pointer" }}
-  >
-    <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", color: "rgba(255,255,255,0.7)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-      Payment Details (If Prompt Fails)
-    </span>
-    <span style={{ color: "#C9A84C", display: "inline-block", transform: payOpen ? "none" : "rotate(180deg)", transition: "transform 0.25s" }}>▴</span>
-  </button>
-
-  {payOpen && (
-    <div style={{ padding: "1rem 1.1rem 1.1rem", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-      <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", lineHeight: 1.6, color: "rgba(255,255,255,0.65)", marginBottom: "1rem" }}>
-        Didn't get the M-Pesa prompt, or it timed out? Pay manually and your slot is confirmed automatically.
-      </p>
-
-      {/* Steps */}
-      {[
-        <>Open M-Pesa → Lipa na M-Pesa → <strong style={{ color: "#fff" }}>Paybill</strong></>,
-        "Enter the details below",
-        "Enter your PIN and send",
-      ].map((s, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.65rem" }}>
-          <span style={{ width: 22, height: 22, flexShrink: 0, borderRadius: "50%", background: "rgba(201,168,76,0.12)", border: "1px solid rgba(201,168,76,0.4)", color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.68rem", display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
-          <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.82rem", color: "rgba(255,255,255,0.8)" }}>{s}</span>
-        </div>
-      ))}
-
-      {/* Details box */}
-      <div style={{ marginTop: "1rem", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, background: "rgba(0,0,0,0.25)" }}>
-        {[
-          { key: "paybill", label: "Business No. (Paybill)", value: PAYBILL_NO, copy: PAYBILL_NO },
-          { key: "account", label: "Account No.", value: accountName, copy: form.full_name.trim() },
-          { key: "name", label: "Name", value: PAYBILL_NAME },
-          // { key: "amount", label: "Amount", value: totalAmount ? `KES ${totalAmount.toLocaleString()}` : "See event price" },
-        ].map((row, i, arr) => (
-          <div key={row.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", padding: "0.8rem 1rem", borderBottom: i < arr.length - 1 ? "1px solid rgba(255,255,255,0.07)" : "none" }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)", marginBottom: 3 }}>{row.label}</div>
-              <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "1.1rem", color: "#fff", wordBreak: "break-word" }}>{row.value}</div>
+            <div style={{ marginBottom: "1rem", padding: "1rem 1.1rem", borderRadius: 10, background: "rgba(201,168,76,0.07)", border: "1px solid rgba(201,168,76,0.3)", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+              <span style={{ width: 18, height: 18, flexShrink: 0, marginTop: 2, borderRadius: "50%", border: "1.5px solid #C9A84C", color: "#C9A84C", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>i</span>
+              <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", lineHeight: 1.65, color: "rgba(255,255,255,0.75)" }}>
+                <strong style={{ color: "#fff" }}>How payment works.</strong> After you submit, an M-Pesa prompt will pop up on <span style={{ color: "#C9A84C" }}>your phone</span>. If it doesn't appear or times out, you can pay manually using the details below. Your slot is confirmed automatically.
+              </p>
             </div>
-            {row.copy && (
+
+            {/* Payment details (if prompt fails) */}
+            <div style={{ marginBottom: "1.25rem", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, overflow: "hidden" }}>
               <button
                 type="button"
-                onClick={() => copyText(row.key, row.copy)}
-                style={{ flexShrink: 0, padding: "0.5rem 0.95rem", borderRadius: 6, background: "transparent", border: "1px solid rgba(201,168,76,0.6)", color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.68rem", letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer" }}
+                onClick={() => setPayOpen(o => !o)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.85rem 1.1rem", background: "rgba(255,255,255,0.03)", border: "none", cursor: "pointer" }}
               >
-                {copied === row.key ? "Copied" : "Copy"}
+                <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.72rem", color: "rgba(255,255,255,0.7)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  Payment Details (If Prompt Fails)
+                </span>
+                <span style={{ color: "#C9A84C", display: "inline-block", transform: payOpen ? "none" : "rotate(180deg)", transition: "transform 0.25s" }}>▴</span>
               </button>
-            )}
-          </div>
-        ))}
-      </div>
 
-      <p style={{ marginTop: "1rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.76rem", lineHeight: 1.6, color: "rgba(255,255,255,0.5)" }}>
-        Use your full name as the account so we can match your payment. You'll get a confirmation SMS within a few minutes. Still stuck? WhatsApp{" "}
-        <a href={`https://wa.me/${SUPPORT_WHATSAPP}`} target="_blank" rel="noopener noreferrer" style={{ color: "#C9A84C", textDecoration: "none" }}>{SUPPORT_NUMBER}</a>.
-      </p>
-    </div>
-  )}
-</div>
+              {payOpen && (
+                <div style={{ padding: "1rem 1.1rem 1.1rem", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", lineHeight: 1.6, color: "rgba(255,255,255,0.65)", marginBottom: "1rem" }}>
+                    Didn't get the M-Pesa prompt, or it timed out? Pay manually and your slot is confirmed automatically.
+                  </p>
+
+                  {/* Steps */}
+                  {[
+                    <>Open M-Pesa → Lipa na M-Pesa → <strong style={{ color: "#fff" }}>Paybill</strong></>,
+                    "Enter the details below",
+                    "Enter your PIN and send",
+                  ].map((s, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.65rem" }}>
+                      <span style={{ width: 22, height: 22, flexShrink: 0, borderRadius: "50%", background: "rgba(201,168,76,0.12)", border: "1px solid rgba(201,168,76,0.4)", color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.68rem", display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.82rem", color: "rgba(255,255,255,0.8)" }}>{s}</span>
+                    </div>
+                  ))}
+
+                  {/* Details box */}
+                  <div style={{ marginTop: "1rem", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, background: "rgba(0,0,0,0.25)" }}>
+                    {[
+                      { key: "paybill", label: "Business No. (Paybill)", value: PAYBILL_NO, copy: PAYBILL_NO },
+                      { key: "account", label: "Account No.", value: accountName, copy: form.full_name.trim() },
+                      { key: "name", label: "Name", value: PAYBILL_NAME },
+                      // { key: "amount", label: "Amount", value: totalAmount ? `KES ${totalAmount.toLocaleString()}` : "See event price" },
+                    ].map((row, i, arr) => (
+                      <div key={row.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", padding: "0.8rem 1rem", borderBottom: i < arr.length - 1 ? "1px solid rgba(255,255,255,0.07)" : "none" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)", marginBottom: 3 }}>{row.label}</div>
+                          <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "1.1rem", color: "#fff", wordBreak: "break-word" }}>{row.value}</div>
+                        </div>
+                        {row.copy && (
+                          <button
+                            type="button"
+                            onClick={() => copyText(row.key, row.copy)}
+                            style={{ flexShrink: 0, padding: "0.5rem 0.95rem", borderRadius: 6, background: "transparent", border: "1px solid rgba(201,168,76,0.6)", color: "#C9A84C", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.68rem", letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer" }}
+                          >
+                            {copied === row.key ? "Copied" : "Copy"}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <p style={{ marginTop: "1rem", fontFamily: "'DM Sans', sans-serif", fontSize: "0.76rem", lineHeight: 1.6, color: "rgba(255,255,255,0.5)" }}>
+                    Use your full name as the account so we can match your payment. You'll get a confirmation SMS within 24 hours. Still stuck? WhatsApp{" "}
+                    <a href={`https://wa.me/${SUPPORT_WHATSAPP}`} target="_blank" rel="noopener noreferrer" style={{ color: "#C9A84C", textDecoration: "none" }}>{SUPPORT_NUMBER}</a>.
+                  </p>
+                </div>
+              )}
+            </div>
 
             {status === "error" && errorMsg && (
               <div style={{ marginBottom: "1.1rem", padding: "0.75rem 1rem", borderRadius: 8, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", color: "#fca5a5", fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem" }}>
@@ -714,11 +851,11 @@ const copyText = async (key, text) => {
 
             <button
               type="submit"
-              disabled={status === "submitting" || !isValid}
+              disabled={submitting || !isValid}
               className="btn-primary"
-              style={{ width: "100%", padding: "1rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.88rem", cursor: (status === "submitting" || !isValid) ? "not-allowed" : "pointer", opacity: (status === "submitting" || !isValid) ? 0.55 : 1, boxShadow: "0 4px 24px rgba(201,168,76,0.35)", transition: "all 0.3s", letterSpacing: "0.08em", textTransform: "uppercase" }}
+              style={{ width: "100%", padding: "1rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.88rem", cursor: (submitting || !isValid) ? "not-allowed" : "pointer", opacity: (submitting || !isValid) ? 0.55 : 1, boxShadow: "0 4px 24px rgba(201,168,76,0.35)", transition: "all 0.3s", letterSpacing: "0.08em", textTransform: "uppercase" }}
             >
-              {status === "submitting" ? "Submitting..." : "Submit"}
+              {submitting ? "Submitting..." : "Submit"}
             </button>
 
             <p style={{ marginTop: "1rem", textAlign: "center", fontFamily: "'DM Sans', sans-serif", color: "rgba(255,255,255,0.25)", fontSize: "0.72rem", letterSpacing: "0.04em" }}>ESC OR CLICK OUTSIDE TO CANCEL</p>
@@ -741,14 +878,16 @@ function EventDetailsModal({ event, onClose, onRegister, onImageClick }) {
   const upcoming = !!event.event_date && new Date(event.event_date) >= new Date();
   const desc = (event.description || "").trim();
   const hasDesc = desc && desc.toLowerCase() !== "to be added"; // ignore the placeholder text
-  const price = formatPrice(event.price);
+    const price = formatPrice(event.price_with_medal ?? event.price);
+  const priceNoMedal = Number(event.price_without_medal) > 0 ? formatPrice(event.price_without_medal) : null;
   const deadline = event.registration_deadline ? formatEventDate(event.registration_deadline) : null;
 
   const details = [
     event.event_date && { icon: <CalIcon />, label: "Date", value: formatEventDate(event.event_date) },
     event.location && { icon: <PinIcon />, label: "Venue", value: event.location },
     event.distance && { icon: <span>🏃</span>, label: "Distance", value: event.distance },
-    price && { icon: <span>💰</span>, label: "Entry Fee", value: price },
+    price && { icon: <span>💰</span>, label: priceNoMedal ? "Entry Fee (with medal)" : "Entry Fee", value: price },
+    priceNoMedal && { icon: <span>💰</span>, label: "Entry Fee (without medal)", value: priceNoMedal },
     deadline && { icon: <span>⏳</span>, label: "Register By", value: deadline },
   ].filter(Boolean);
 
@@ -820,7 +959,7 @@ function EventDetailsModal({ event, onClose, onRegister, onImageClick }) {
           {upcoming && (
             <button
               type="button"
-              onClick={() => onRegister(event.id, event.title, event.price)}
+              onClick={() =>    onRegister(event.id, event.title, getPrices(event))}
               className="btn-primary"
               style={{ flex: "2 1 180px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.9rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 24px rgba(201,168,76,0.35)", transition: "all 0.3s" }}>
               Register Now <ArrowRightIcon />
@@ -878,8 +1017,11 @@ function Navbar() {
 
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => { setIsAdmin(!!loadAuth().token); }, []);
-  const links = isAdmin ? ["About", "Events", "Gallery", "Results", "Registrations"] : ["About", "Events", "Gallery", "Results"];
-  const linkHref = (l) => (l === "Registrations" ? "/registrations" : `#${l.toLowerCase()}`);
+  const links = isAdmin ? ["About", "Events", "Gallery", "Results", "Blogs", "Registrations"] : ["About", "Events", "Gallery", "Results", "Blogs"];
+  const linkHref = (l) =>
+    l === "Registrations" ? "/registrations" :
+      l === "Blogs" ? "/blogs" :
+        `#${l.toLowerCase()}`;
   return (
     <>
       <nav style={{
@@ -1000,6 +1142,28 @@ function formatPrice(price) {
   return num === 0 ? "Free" : `KES ${num.toLocaleString()}`;
 }
 
+// Both ticket prices of an event, passed to the registration form
+function getPrices(ev) {
+  return { withMedal: ev?.price_with_medal ?? ev?.price, withoutMedal: ev?.price_without_medal };
+}
+
+// Price for the chosen medal option. If no "without medal" price was set
+// (older events), it falls back to the normal price.
+function priceFor(prices, medal) {
+  const withMedal = Number(prices?.withMedal);
+  const withoutMedal = Number(prices?.withoutMedal);
+  if (medal === "without_medal" && withoutMedal > 0) return withoutMedal;
+  return isNaN(withMedal) ? 0 : withMedal;
+}
+
+// Text for cards and hero: "KES 1,500 with medal · KES 1,200 without"
+function formatPriceBoth(ev) {
+  const withMedal = formatPrice(ev?.price_with_medal ?? ev?.price);
+  if (!(Number(ev?.price_without_medal) > 0)) return withMedal;
+  const withoutMedal = formatPrice(ev.price_without_medal);
+  return withMedal ? `${withMedal} with medal · ${withoutMedal} without` : `${withoutMedal} without medal`;
+}
+
 // ── Build UPCOMING slides — events whose date hasn't happened yet ────────────
 function buildUpcomingSlides(events, now) {
   return events
@@ -1011,7 +1175,7 @@ function buildUpcomingSlides(events, now) {
       title: heroTitleCase(ev.title),
       subtitle: heroSubtitle(ev),
       date: heroFormatDate(ev.event_date),
-      price: formatPrice(ev.price),
+      price: formatPriceBoth(ev),
       tag: "Registration Open",
       tagColor: "#C9A84C",
       img: ev.cover_image || "",
@@ -1127,7 +1291,7 @@ function HeroSlideshow({ onImageClick, onRegisterClick, onLearnMoreClick }) {
     if (!slide.eventId) return; // fallback slide: follow the external link normally
     if (e.metaKey || e.ctrlKey || e.shiftKey) return; // let "open in new tab" work
     e.preventDefault();
-    onRegisterClick(slide.eventId, slide.title.replace(/\n/g, " "));
+       onRegisterClick(slide.eventId, slide.title.replace(/\n/g, " "), getPrices(slide.event));
   };
 
   // ── "Learn More" → event details modal (falls back to scrolling to About) ──
@@ -1239,7 +1403,7 @@ function HeroSlideshow({ onImageClick, onRegisterClick, onLearnMoreClick }) {
           {slide.type === "upcoming" && slide.eventId ? (
             <button
               type="button"
-              onClick={() => onRegisterClick(slide.eventId, slide.title.replace(/\n/g, " "))}
+              onClick={() =>    onRegisterClick(slide.eventId, slide.title.replace(/\n/g, " "), getPrices(slide.event))}
               className="btn-primary"
               style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", padding: "0.85rem 2rem", borderRadius: 4, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.82rem", border: "none", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", transition: "all 0.3s", boxShadow: "0 8px 32px rgba(201,168,76,0.4)" }}>
               {slide.cta.text} <ArrowRight />
@@ -1546,7 +1710,7 @@ function UpcomingCard({ event, index, visible, onImageClick, onRegisterClick }) 
 
         <button
           type="button"
-          onClick={() => onRegisterClick(event.id, event.title, event.price)}
+          onClick={() =>    onRegisterClick(event.id, event.title, getPrices(event))}
           style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", padding: "0.85rem", background: "linear-gradient(135deg,#C9A84C,#b8962e)", color: "#0d0d1a", border: "none", borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", letterSpacing: "0.08em", textTransform: "uppercase", boxShadow: "0 4px 20px rgba(201,168,76,0.3)", transition: "all 0.3s" }}
           onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 8px 32px rgba(201,168,76,0.45)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
           onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 4px 20px rgba(201,168,76,0.3)"; e.currentTarget.style.transform = "none"; }}>
@@ -2525,10 +2689,10 @@ export default function HomePage() {
 
   // Open the registration form (also puts a shareable ?register=<id> link in the address bar)
   const openRegisterModal = (eventId, eventTitle, eventPrice) => {
-  setDetailsModal(null);
-  setRegModal({ eventId, eventTitle, eventPrice });
-  setRegisterUrl(eventId);
-};
+    setDetailsModal(null);
+    setRegModal({ eventId, eventTitle, eventPrice });
+    setRegisterUrl(eventId);
+  };
 
   const closeRegisterModal = useCallback(() => {
     setRegModal(null);
@@ -2542,16 +2706,16 @@ export default function HomePage() {
     let cancelled = false;
     (async () => {
       let title = "";
-let price;
-try {
-  const events = await fetchEvents();
-  const ev = events.find(e => String(e.id) === id);
-  if (!ev) return;
-  if (ev.event_date && new Date(ev.event_date) < new Date()) return;
-  title = ev.title;
-  price = ev.price;
-} catch { }
-if (!cancelled) setRegModal({ eventId: id, eventTitle: title, eventPrice: price });
+      let price;
+      try {
+        const events = await fetchEvents();
+        const ev = events.find(e => String(e.id) === id);
+        if (!ev) return;
+        if (ev.event_date && new Date(ev.event_date) < new Date()) return;
+        title = ev.title;
+           price = getPrices(ev);
+      } catch { }
+      if (!cancelled) setRegModal({ eventId: id, eventTitle: title, eventPrice: price });
     })();
     return () => { cancelled = true; };
   }, []);

@@ -745,6 +745,7 @@ function Navbar({ isAuthenticated, user, onLogout, onLoginClick, onUploadClick }
     { label: "Events", href: "/#events" },
     { label: "Gallery", href: "/gallery" },
     { label: "Results", href: "/results" },
+    { label: "Blogs", href: "/blogs" },
   ];
   const links = isAuthenticated ? [...baseLinks, { label: "Registrations", href: "/registrations" }] : baseLinks;
 

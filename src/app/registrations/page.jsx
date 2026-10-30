@@ -268,6 +268,7 @@ function Navbar({ isAuthenticated, user, onLogout, onLoginClick }) {
         { label: "Events", href: "/#events" },
         { label: "Gallery", href: "/gallery" },
         { label: "Results", href: "/results" },
+        { label: "Blogs", href: "/blogs" },
         ...(isAuthenticated ? [{ label: "Registrations", href: "/registrations" }] : []),
     ];
     const linkColor = (l) => (l.href === "/registrations" ? "#C9A84C" : "rgba(255,255,255,0.75)");
